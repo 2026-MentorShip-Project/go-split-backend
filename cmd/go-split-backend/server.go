@@ -55,11 +55,11 @@ func main() {
 		r.Use(gin.Logger())
 	}
 
-	if cfg.Logging.Format == "json" {
-		r.Use(gin.RecoveryWithWriter(io.Discard, jsonRecoveryHandler))
-	} else {
-		r.Use(gin.Recovery())
-	}
+	r.Use(gin.RecoveryWithWriter(io.Discard, jsonRecoveryHandler))
+	// if cfg.Logging.Format == "json" {
+	// } else {
+	// 	r.Use(gin.Recovery())
+	// }
 
 	r.GET("/healthz", controller.HealthCheck)
 	s := &http.Server{
