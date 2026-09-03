@@ -1,0 +1,27 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+
+repos:
+  - repo: local
+    hooks:
+      - id: go-fmt-check
+        name: Go Format Check
+        description: Runs formatting.
+        entry: make fmt-check
+        language: system
+        # Only run if Go files are changed to save time
+        files: \.go$
+        stages: [pre-commit]
+        # pass_filenames: false ensures make has access to the full project context
+        pass_filenames: false
+
+      - id: go-comprehensive-check
+        name: Go Comprehensive Check
+        description: Runs the full suite of formatting, linting, and testing.
+        entry: make pre-commit-check
+        language: system
+        # Only run if Go files are changed to save time
+        files: \.go$
+        stages: [pre-push]
+        # pass_filenames: false ensures make has access to the full project context
+        pass_filenames: false

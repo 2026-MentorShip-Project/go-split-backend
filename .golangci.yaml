@@ -1,0 +1,45 @@
+version: "2"
+linters:
+  enable:
+    - copyloopvar
+    - errname
+    - errorlint
+    - gocognit
+    - importas
+    - prealloc
+    - revive
+    - spancheck
+    - unconvert
+    - usestdlibvars
+    - whitespace
+  settings:
+    revive:
+      rules:
+        - name: var-naming
+          arguments:
+            - - URL
+              - ID
+              - API
+              - JSON
+            - - IDFA
+              - IDFV
+              - AUID
+          disabled: false
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
