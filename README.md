@@ -1,12 +1,19 @@
 # go-split-backend
 
+
+
 Table of contents
 =================
+* [PRD dest](#prd)
 * [Prerequisite](#prerequisite)
 * [Development](#development)
     * [Install modules](#install-modules)
     * [Run pre-commit check](#run-pre-commit-check)
     * [Test on dev cluster](#test-on-dev-cluster)
+
+
+## Prd
+- link to prd: https://github.com/Go-Split/Go-Split/blob/main/%E7%BE%A4%E9%AB%94%E6%B4%BB%E5%8B%95%E5%88%86%E5%B8%B3%E5%B7%A5%E5%85%B7_PRD_v0.3.md
 
 
 ## Prerequisite

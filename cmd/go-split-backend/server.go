@@ -22,8 +22,6 @@ import (
 
 // @title go-split-backend service
 // @version 1.0
-// @description go-split-backend service for recommendation ecosystem
-// @contact.email ai-rec-sys@appier.com
 // @basePath /
 // @schemes https
 //
