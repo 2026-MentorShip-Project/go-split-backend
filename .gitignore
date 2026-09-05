@@ -54,3 +54,9 @@ Thumbs.db
 *.wmv
 
 secrets/
+
+# terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
