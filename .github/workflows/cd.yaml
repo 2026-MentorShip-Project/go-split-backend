@@ -1,0 +1,109 @@
+name: cd
+
+permissions:
+  contents: read
+  id-token: write # REQUIRED: Allows GitHub to issue the short-lived OIDC JWT token
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'main'
+    tags:
+      - '**'
+    paths:
+      - cmd/**
+      - internal/**
+      - .github/workflows/**
+      - deploy/gcp/**
+      - Dockerfile
+      - go.mod
+      - go.sum
+
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ vars.GCP_REGION }}
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+  WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
+  SERVICE_ACCOUNT: ${{ vars.SERVICE_ACCOUNT }}
+  GAR_REPOSITORY: ${{ vars.GAR_REPOSITORY }}
+  CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 1. Detect which files changed in this commit
+      - name: Check Changed Files
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            infra:
+              - 'deploy/**'
+              - '*.tf'
+            app:
+              - 'cmd/**'
+              - 'internal/**'
+              - 'Dockerfile'
+              - 'go.mod'
+              - 'go.sum'
+              - '**/*.go'
+
+      # 2. Authenticate to GCP using Workload Identity Federation (OIDC)
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.SERVICE_ACCOUNT }}
+
+      # 3. Setup Google Cloud SDK
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # ------------------------------------------------------------------------
+      # STEP A: Apply Infrastructure Changes (If Terraform files changed)
+      # ------------------------------------------------------------------------
+      - name: Setup Terraform
+        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.infra == 'true' || steps.filter.outputs.app == 'true'
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init & Apply
+        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.infra == 'true' || steps.filter.outputs.app == 'true'
+        working-directory: deploy/gcp
+        env:
+          TF_VAR_project_id: ${{ env.GCP_PROJECT_ID }}
+          TF_VAR_region: ${{ env.GCP_REGION }}
+          TF_VAR_gar_repository: ${{ env.GAR_REPOSITORY }}
+          TF_VAR_cloud_run_service: ${{ env.CLOUD_RUN_SERVICE }}
+        run: |
+          terraform init -backend-config="bucket=${TF_STATE_BUCKET}"
+          terraform apply -auto-approve
+
+      # ------------------------------------------------------------------------
+      # STEP B: Build & Deploy Application (If Application files changed)
+      # ------------------------------------------------------------------------
+      - name: Configure Docker Auth for GAR
+        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.app == 'true'
+        run: |
+          gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and Push Docker Image
+        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.app == 'true'
+        env:
+          IMAGE_TAG: "${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/go-backend:${{ github.sha }}"
+        run: |
+          docker build -t $IMAGE_TAG .
+          docker push $IMAGE_TAG
+
+      - name: Deploy to Cloud Run
+        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.app == 'true'
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.CLOUD_RUN_SERVICE }}
+          region: ${{ env.GCP_REGION }}
+          image: "${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/go-backend:${{ github.sha }}"

@@ -6,11 +6,33 @@ terraform {
       version = "~> 5.0"
     }
   }
+
+  backend "gcs" {
+    prefix = "terraform/state"
+  }
+}
+
+variable "project_id" {
+  type = string
+}
+
+variable "region" {
+  type = string
+}
+
+variable "gar_repository" {
+  type    = string
+  default = "backend-repo"
+}
+
+variable "cloud_run_service" {
+  type    = string
+  default = "go-backend-api"
 }
 
 provider "google" {
-  project = "project-4ddffd8b-3b42-486b-b6a"
-  region  = "asia-east1"
+  project = var.project_id
+  region  = var.region
 }
 
 # ------------------------------------------------------------------------------
@@ -19,6 +41,20 @@ provider "google" {
 resource "google_project_service" "run_api" {
   service            = "run.googleapis.com"
   disable_on_destroy = false
+}
+
+resource "google_project_service" "artifact_registry_api" {
+  service            = "artifactregistry.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_artifact_registry_repository" "backend" {
+  location      = var.region
+  repository_id = var.gar_repository
+  description   = "Backend Docker images"
+  format        = "DOCKER"
+
+  depends_on = [google_project_service.artifact_registry_api]
 }
 
 # ------------------------------------------------------------------------------
@@ -33,8 +69,8 @@ resource "google_service_account" "go_backend_sa" {
 # 3. Cloud Run Service Deployment (v2 API)
 # ------------------------------------------------------------------------------
 resource "google_cloud_run_v2_service" "go_backend" {
-  name     = "go-backend-api"
-  location = "us-central1"
+  name     = var.cloud_run_service
+  location = var.region
   ingress  = "INGRESS_TRAFFIC_ALL" # Open to public internet at Google's edge
 
   template {
@@ -65,6 +101,12 @@ resource "google_cloud_run_v2_service" "go_backend" {
       min_instance_count = 0 # Scales to zero to save costs when idle
       max_instance_count = 10
     }
+  }
+
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image
+    ]
   }
 
   depends_on = [google_project_service.run_api]
