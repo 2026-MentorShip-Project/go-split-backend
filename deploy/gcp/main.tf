@@ -12,31 +12,8 @@ terraform {
   }
 }
 
-variable "project_id" {
-  type = string
-}
-
-variable "region" {
-  type = string
-}
-
-variable "gar_repository" {
-  type    = string
-  default = "backend-repo"
-}
-
-variable "cloud_run_service" {
-  type    = string
-  default = "go-backend-api"
-}
-
-provider "google" {
-  project = var.project_id
-  region  = var.region
-}
-
 # ------------------------------------------------------------------------------
-# 1. Enable Required GCP APIs
+# Enable Required GCP APIs
 # ------------------------------------------------------------------------------
 resource "google_project_service" "run_api" {
   service            = "run.googleapis.com"
@@ -58,26 +35,36 @@ resource "google_artifact_registry_repository" "backend" {
 }
 
 # ------------------------------------------------------------------------------
-# 2. Service Account for Cloud Run Runtime
+# Artifact Registry
+# ------------------------------------------------------------------------------
+resource "google_artifact_registry_repository" "backend" {
+  location      = var.gcp_region
+  repository_id = var.gar_repository_id # Injected from GitHub Vars
+  format        = "DOCKER"
+}
+
+# ------------------------------------------------------------------------------
+# Service Account for Cloud Run Runtime
 # ------------------------------------------------------------------------------
 resource "google_service_account" "go_backend_sa" {
   account_id   = "go-backend-runner"
   display_name = "Cloud Run Service Account for Go Backend"
 }
 
+
 # ------------------------------------------------------------------------------
-# 3. Cloud Run Service Deployment (v2 API)
+# Cloud Run Service Deployment (v2 API)
 # ------------------------------------------------------------------------------
 resource "google_cloud_run_v2_service" "go_backend" {
   name     = var.cloud_run_service
-  location = var.region
+  location = var.gcp_region
   ingress  = "INGRESS_TRAFFIC_ALL" # Open to public internet at Google's edge
 
   template {
     service_account = google_service_account.go_backend_sa.email
 
     containers {
-      # Public GCP sample app to verify deployment; swap with specified Artifact Registry URL later
+      # Dummy/Hello world image for initial setup
       image = "us-docker.pkg.dev/cloudrun/container/hello:latest"
 
       ports {
@@ -105,7 +92,8 @@ resource "google_cloud_run_v2_service" "go_backend" {
 
   lifecycle {
     ignore_changes = [
-      template[0].containers[0].image
+      template[0].containers[0].image,
+      template[0].annotations["client.knative.dev/user-image"]
     ]
   }
 
@@ -113,7 +101,7 @@ resource "google_cloud_run_v2_service" "go_backend" {
 }
 
 # ------------------------------------------------------------------------------
-# 4. IAM Access Control (Public Endpoints)
+# IAM Access Control (Public Endpoints)
 # ------------------------------------------------------------------------------
 # Allows unauthenticated callers on the internet to invoke the Cloud Run URL.
 resource "google_cloud_run_v2_service_iam_member" "public_invoker" {
@@ -125,7 +113,7 @@ resource "google_cloud_run_v2_service_iam_member" "public_invoker" {
 }
 
 # ------------------------------------------------------------------------------
-# 5. Outputs
+# Outputs
 # ------------------------------------------------------------------------------
 output "cloud_run_url" {
   description = "The public URL of the deployed Cloud Run service"
