@@ -25,22 +25,15 @@ resource "google_project_service" "artifact_registry_api" {
   disable_on_destroy = false
 }
 
-resource "google_artifact_registry_repository" "backend" {
-  location      = var.region
-  repository_id = var.gar_repository
-  description   = "Backend Docker images"
-  format        = "DOCKER"
-
-  depends_on = [google_project_service.artifact_registry_api]
-}
-
 # ------------------------------------------------------------------------------
 # Artifact Registry
 # ------------------------------------------------------------------------------
 resource "google_artifact_registry_repository" "backend" {
   location      = var.gcp_region
-  repository_id = var.gar_repository_id # Injected from GitHub Vars
+  repository_id = var.gar_repository_id
   format        = "DOCKER"
+
+  depends_on = [google_project_service.artifact_registry_api]
 }
 
 # ------------------------------------------------------------------------------
