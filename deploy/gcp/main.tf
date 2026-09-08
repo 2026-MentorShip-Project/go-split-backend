@@ -30,6 +30,11 @@ resource "google_project_service" "artifact_registry_api" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "sqladmin_api" {
+  service            = "sqladmin.googleapis.com"
+  disable_on_destroy = false
+}
+
 # ------------------------------------------------------------------------------
 # Artifact Registry
 # ------------------------------------------------------------------------------
@@ -39,6 +44,36 @@ resource "google_artifact_registry_repository" "backend" {
   format        = "DOCKER"
 
   depends_on = [google_project_service.artifact_registry_api]
+}
+
+# ------------------------------------------------------------------------------
+# Cloud SQL for PostgreSQL
+# ------------------------------------------------------------------------------
+resource "google_sql_database_instance" "postgres" {
+  name                = "go-split-postgres"
+  database_version    = "POSTGRES_15"
+  region              = var.gcp_region
+  deletion_protection = true
+
+  settings {
+    tier              = "db-f1-micro"
+    availability_type = "ZONAL"
+    disk_type         = "PD_SSD"
+    disk_size         = 10
+    disk_autoresize   = true
+
+    backup_configuration {
+      enabled                        = true
+      point_in_time_recovery_enabled = true
+    }
+
+    ip_configuration {
+      ipv4_enabled = true
+      require_ssl  = true
+    }
+  }
+
+  depends_on = [google_project_service.sqladmin_api]
 }
 
 # ------------------------------------------------------------------------------
