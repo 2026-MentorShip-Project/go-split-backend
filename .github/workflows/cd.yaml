@@ -54,21 +54,21 @@ jobs:
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
-          project_id: ${{ env.GCP_PROJECT_ID }} # TODO: do we need this?
+          project_id: ${{ env.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ env.WIF_PROVIDER }}
           service_account: ${{ env.SERVICE_ACCOUNT }}
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
       # ------------------------------------------------------------------------
-      # STEP A: Apply Infrastructure Changes (If Terraform files changed)
+      # STEP A: Provision infrastructure before deployment
       # ------------------------------------------------------------------------
       - name: Setup Terraform
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.infra == 'true'
+        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.infra == 'true' || steps.filter.outputs.app == 'true'
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init & Apply
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.infra == 'true'
+        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.infra == 'true' || steps.filter.outputs.app == 'true'
         working-directory: deploy/gcp
         env:
           TF_VAR_gcp_project_id: ${{ env.GCP_PROJECT_ID }}
@@ -77,7 +77,7 @@ jobs:
           TF_VAR_gar_repository_id: ${{ env.GAR_REPO_NAME }}
         run: |
           terraform init -backend-config="bucket=${TF_STATE_BUCKET}"
-          terraform apply -auto-approve
+          terraform apply -auto-approve -input=false
 
       # ------------------------------------------------------------------------
       # STEP B: Build & Deploy Application (If Application files changed)
@@ -92,8 +92,8 @@ jobs:
         env:
           IMAGE_TAG: "${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPO_NAME }}/go-backend:${{ github.sha }}"
         run: |
-          docker build -t $IMAGE_TAG .
-          docker push $IMAGE_TAG
+          docker build -t "${IMAGE_TAG}" .
+          docker push "${IMAGE_TAG}"
 
       - name: Deploy to Cloud Run
         if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.app == 'true'

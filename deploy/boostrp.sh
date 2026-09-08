@@ -5,7 +5,7 @@ set -euo pipefail
 export PROJECT_ID="project-4ddffd8b-3b42-486b-b6a"
 export REGION="asia-east1"
 export GCS_BUCKET_NAME="${PROJECT_ID}-tfstate"
-export GITHUB_REPO="2026-MentorShip-Project/go-split-backend"
+export GITHUB_REPO="2026-MentorShip-Project/bill-splitter-backend"
 
 gcloud config set project "${PROJECT_ID}"
 

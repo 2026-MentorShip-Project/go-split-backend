@@ -6,7 +6,6 @@ RUN apk add build-base git ca-certificates openssh curl
 
 RUN go install github.com/swaggo/swag/cmd/swag@v1.16.6
 
-COPY .gitconfig /root/.gitconfig
 COPY go.* ./
 
 RUN --mount=type=ssh go mod download
