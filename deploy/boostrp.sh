@@ -32,7 +32,7 @@ gcloud iam service-accounts create github-cd-runner \
 
 # 5. Grant Required IAM Roles to the CD Runner Service Account
 # (Add extra roles here as needed, e.g., roles/cloudsql.admin)
-for ROLE in "roles/run.admin" "roles/artifactregistry.admin" "roles/cloudsql.admin" "roles/secretmanager.admin" "roles/iam.serviceAccountAdmin" "roles/iam.serviceAccountUser" "roles/serviceusage.serviceUsageAdmin"; do
+for ROLE in "roles/run.admin" "roles/artifactregistry.admin" "roles/cloudsql.admin" "roles/secretmanager.admin" "roles/resourcemanager.projectIamAdmin" "roles/iam.serviceAccountAdmin" "roles/iam.serviceAccountUser" "roles/serviceusage.serviceUsageAdmin"; do
   gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:github-cd-runner@${PROJECT_ID}.iam.gserviceaccount.com" \
     --role="${ROLE}"
