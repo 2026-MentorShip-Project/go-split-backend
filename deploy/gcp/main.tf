@@ -35,6 +35,11 @@ resource "google_project_service" "sqladmin_api" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "secretmanager_api" {
+  service            = "secretmanager.googleapis.com"
+  disable_on_destroy = false
+}
+
 # ------------------------------------------------------------------------------
 # Artifact Registry
 # ------------------------------------------------------------------------------
@@ -53,7 +58,7 @@ resource "google_sql_database_instance" "postgres" {
   name                = "go-split-postgres"
   database_version    = "POSTGRES_15"
   region              = var.gcp_region
-  deletion_protection = true
+  deletion_protection = false
 
   settings {
     tier              = "db-f1-micro"
@@ -69,11 +74,37 @@ resource "google_sql_database_instance" "postgres" {
 
     ip_configuration {
       ipv4_enabled = true
-      require_ssl  = true
+      ssl_mode     = "ENCRYPTED_ONLY"
     }
   }
 
   depends_on = [google_project_service.sqladmin_api]
+}
+
+resource "google_sql_database" "app" {
+  name     = "go_split"
+  instance = google_sql_database_instance.postgres.name
+}
+
+resource "google_sql_user" "app" {
+  name     = "go_split"
+  instance = google_sql_database_instance.postgres.name
+  password = var.db_password
+}
+
+resource "google_secret_manager_secret" "db_password" {
+  secret_id = "go-split-db-password"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.secretmanager_api]
+}
+
+resource "google_secret_manager_secret_version" "db_password" {
+  secret      = google_secret_manager_secret.db_password.id
+  secret_data = var.db_password
 }
 
 # ------------------------------------------------------------------------------
@@ -82,6 +113,18 @@ resource "google_sql_database_instance" "postgres" {
 resource "google_service_account" "go_backend_sa" {
   account_id   = "go-backend-runner"
   display_name = "Cloud Run Service Account for Go Backend"
+}
+
+resource "google_project_iam_member" "cloud_run_sql_client" {
+  project = var.gcp_project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.go_backend_sa.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "cloud_run_db_password_accessor" {
+  secret_id = google_secret_manager_secret.db_password.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.go_backend_sa.email}"
 }
 
 
@@ -95,6 +138,14 @@ resource "google_cloud_run_v2_service" "go_backend" {
 
   template {
     service_account = google_service_account.go_backend_sa.email
+
+    volumes {
+      name = "cloudsql"
+
+      cloud_sql_instance {
+        instances = [google_sql_database_instance.postgres.connection_name]
+      }
+    }
 
     containers {
       # Dummy/Hello world image for initial setup
@@ -115,6 +166,41 @@ resource "google_cloud_run_v2_service" "go_backend" {
         name  = "APP_ENV"
         value = "production"
       }
+
+      env {
+        name  = "DB_HOST"
+        value = "/cloudsql/${google_sql_database_instance.postgres.connection_name}"
+      }
+
+      env {
+        name  = "DB_PORT"
+        value = "5432"
+      }
+
+      env {
+        name  = "DB_USER"
+        value = google_sql_user.app.name
+      }
+
+      env {
+        name  = "DB_NAME"
+        value = google_sql_database.app.name
+      }
+
+      env {
+        name = "DB_PASSWORD"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.db_password.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      volume_mounts {
+        name       = "cloudsql"
+        mount_path = "/cloudsql"
+      }
     }
 
     scaling {
@@ -130,7 +216,7 @@ resource "google_cloud_run_v2_service" "go_backend" {
     ]
   }
 
-  depends_on = [google_project_service.run_api]
+  depends_on = [google_project_service.run_api, google_project_iam_member.cloud_run_sql_client, google_secret_manager_secret_iam_member.cloud_run_db_password_accessor]
 }
 
 # ------------------------------------------------------------------------------

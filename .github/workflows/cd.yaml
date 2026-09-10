@@ -75,6 +75,7 @@ jobs:
           TF_VAR_gcp_region: ${{ env.GCP_REGION }}
           TF_VAR_cloud_run_service: ${{ env.CLOUD_RUN_SERVICE }}
           TF_VAR_gar_repository_id: ${{ env.GAR_REPO_NAME }}
+          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
         run: |
           terraform init -backend-config="bucket=${TF_STATE_BUCKET}"
           terraform apply -auto-approve -input=false

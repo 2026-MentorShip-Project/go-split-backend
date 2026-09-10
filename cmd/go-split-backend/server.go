@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"go-split-backend/internal/controller"
+	"go-split-backend/internal/database"
 
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
@@ -26,6 +27,12 @@ import (
 //go:generate swag init -d ../../ -g cmd/go-split-backend/server.go -o ../../docs
 
 func main() {
+	db, err := database.Open(context.Background())
+	if err != nil {
+		log.Fatalf("Failed to connect to database, err: %v", err)
+	}
+	defer db.Close()
+
 	// Example GIN service
 	r := gin.New()
 

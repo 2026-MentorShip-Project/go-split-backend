@@ -18,3 +18,9 @@ variable "gar_repository_id" {
   type        = string
   description = "The ID of the Artifact Registry repository"
 }
+
+variable "db_password" {
+  type        = string
+  description = "Password for the application PostgreSQL user"
+  sensitive   = true
+}
