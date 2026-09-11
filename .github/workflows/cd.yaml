@@ -51,6 +51,11 @@ jobs:
               - 'go.mod'
               - 'go.sum'
               - '**/*.go'
+            seed:
+              - 'cmd/seed-templates/**'
+              - 'internal/events/templates/**'
+              - 'internal/events/seed.go'
+              - 'internal/database/migrations/**'
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
@@ -79,6 +84,51 @@ jobs:
         run: |
           terraform init -backend-config="bucket=${TF_STATE_BUCKET}"
           terraform apply -auto-approve -input=false
+
+
+      # ------------------------------------------------------------------------
+      # STEP A2: Seed reference data (migrations + templates)
+      # ------------------------------------------------------------------------
+      # Runs before Cloud Run is deployed so the new revision boots against a
+      # fully-migrated schema. Idempotent: schema_migrations gates the
+      # migration replay and templates are upserted, so a re-run is a no-op.
+      - name: Set up Go
+        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.infra == 'true' || steps.filter.outputs.seed == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Start Cloud SQL Auth Proxy
+        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.infra == 'true' || steps.filter.outputs.seed == 'true'
+        env:
+          INSTANCE_CONNECTION_NAME: "${{ env.GCP_PROJECT_ID }}:${{ env.GCP_REGION }}:go-split-postgres"
+        run: |
+          curl -sSLo cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.15.2/cloud-sql-proxy.linux.amd64
+          chmod +x cloud-sql-proxy
+          ./cloud-sql-proxy --port 5432 --auto-iam-authn=false "$INSTANCE_CONNECTION_NAME" >proxy.log 2>&1 &
+          echo $! > proxy.pid
+          for i in {1..30}; do
+            if (echo > /dev/tcp/127.0.0.1/5432) 2>/dev/null; then
+              echo "proxy up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "proxy failed to start"; cat proxy.log; exit 1
+
+      - name: Seed templates and run migrations
+        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.infra == 'true' || steps.filter.outputs.seed == 'true'
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: "5432"
+          DB_USER: go_split
+          DB_NAME: go_split
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: go run ./cmd/seed-templates
+
+      - name: Stop Cloud SQL Auth Proxy
+        if: always() && hashFiles('proxy.pid') != ''
+        run: kill "$(cat proxy.pid)" || true
 
       # ------------------------------------------------------------------------
       # STEP B: Build & Deploy Application (If Application files changed)
