@@ -31,11 +31,16 @@ import (
 //go:generate swag init -d ../../ -g cmd/go-split-backend/server.go -o ../../docs
 
 func main() {
-	db, err := database.Open(context.Background())
+	ctx := context.Background()
+	db, err := database.Open(ctx)
 	if err != nil {
 		log.Fatalf("Failed to connect to database, err: %v", err)
 	}
 	defer db.Close()
+
+	if err := database.Migrate(ctx, db); err != nil {
+		log.Fatalf("Failed to run migrations, err: %v", err)
+	}
 
 	// Example GIN service
 	r := gin.New()
