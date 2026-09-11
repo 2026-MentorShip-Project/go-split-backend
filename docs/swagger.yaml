@@ -14,6 +14,32 @@ definitions:
       error:
         type: string
     type: object
+  auth.joinRequest:
+    properties:
+      code:
+        maxLength: 32
+        minLength: 1
+        type: string
+      email:
+        type: string
+      phone:
+        maxLength: 32
+        minLength: 1
+        type: string
+    required:
+    - code
+    - email
+    - phone
+    type: object
+  auth.joinResponse:
+    properties:
+      event_id:
+        type: integer
+      guest_id:
+        type: integer
+      role:
+        type: string
+    type: object
   auth.loginRequest:
     properties:
       email:
@@ -24,6 +50,30 @@ definitions:
     required:
     - email
     - password
+    type: object
+  auth.recoverRequest:
+    properties:
+      code:
+        maxLength: 32
+        minLength: 1
+        type: string
+      email:
+        type: string
+      phone:
+        maxLength: 32
+        minLength: 1
+        type: string
+    required:
+    - code
+    - email
+    - phone
+    type: object
+  auth.recoverResponse:
+    properties:
+      event_id:
+        type: integer
+      guest_id:
+        type: integer
     type: object
   auth.registerRequest:
     properties:
@@ -47,6 +97,44 @@ info:
   title: go-split-backend service
   version: "1.0"
 paths:
+  /auth/join:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Look up the invite code, create a guest identity if the
+        email + phone combination is new, attach the guest to the
+        event as a participant, and set a session cookie. The
+        invite code is only accepted while the event is not settled.
+      parameters:
+      - description: Guest first-join
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/auth.joinRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.joinResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+        "410":
+          description: Gone
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+      summary: Guest first-join by invite code
+      tags:
+      - auth
   /auth/login:
     post:
       consumes:
@@ -75,6 +163,57 @@ paths:
           schema:
             $ref: '#/definitions/auth.errorResponse'
       summary: Log in a host account
+      tags:
+      - auth
+  /auth/logout:
+    post:
+      description: |-
+        Deletes the session row named by the cookie and clears the
+        cookie. Safe to call without a cookie.
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: no content
+      summary: End the current session
+      tags:
+      - auth
+  /auth/recover:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        All three of invite code, email, and phone must match an
+        existing guest membership. On success a new session cookie
+        is issued for the original guest id. Only valid while the
+        event is not settled.
+      parameters:
+      - description: Guest session recovery
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/auth.recoverRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.recoverResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+        "410":
+          description: Gone
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+      summary: Recover a guest session by invite code
       tags:
       - auth
   /auth/register:

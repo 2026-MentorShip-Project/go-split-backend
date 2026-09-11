@@ -25,6 +25,7 @@ func (h *Handler) Register(r gin.IRouter) {
 	g := r.Group("/auth")
 	g.POST("/register", h.PostRegister)
 	g.POST("/login", h.PostLogin)
+	h.registerGuestRoutes(g)
 }
 
 type registerRequest struct {

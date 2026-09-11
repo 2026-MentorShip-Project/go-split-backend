@@ -15,6 +15,58 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/auth/join": {
+            "post": {
+                "description": "Look up the invite code, create a guest identity if the\nemail + phone combination is new, attach the guest to the\nevent as a participant, and set a session cookie. The\ninvite code is only accepted while the event is not settled.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Guest first-join by invite code",
+                "parameters": [
+                    {
+                        "description": "Guest first-join",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.joinRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.joinResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/auth.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/auth.errorResponse"
+                        }
+                    },
+                    "410": {
+                        "description": "Gone",
+                        "schema": {
+                            "$ref": "#/definitions/auth.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Verify the host's email + password, then set a session cookie.",
@@ -54,6 +106,75 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/auth.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/logout": {
+            "post": {
+                "description": "Deletes the session row named by the cookie and clears the\ncookie. Safe to call without a cookie.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "End the current session",
+                "responses": {
+                    "204": {
+                        "description": "no content"
+                    }
+                }
+            }
+        },
+        "/auth/recover": {
+            "post": {
+                "description": "All three of invite code, email, and phone must match an\nexisting guest membership. On success a new session cookie\nis issued for the original guest id. Only valid while the\nevent is not settled.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Recover a guest session by invite code",
+                "parameters": [
+                    {
+                        "description": "Guest session recovery",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.recoverRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.recoverResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/auth.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/auth.errorResponse"
+                        }
+                    },
+                    "410": {
+                        "description": "Gone",
                         "schema": {
                             "$ref": "#/definitions/auth.errorResponse"
                         }
@@ -145,6 +266,43 @@ const docTemplate = `{
                 }
             }
         },
+        "auth.joinRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "email",
+                "phone"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "maxLength": 32,
+                    "minLength": 1
+                },
+                "email": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string",
+                    "maxLength": 32,
+                    "minLength": 1
+                }
+            }
+        },
+        "auth.joinResponse": {
+            "type": "object",
+            "properties": {
+                "event_id": {
+                    "type": "integer"
+                },
+                "guest_id": {
+                    "type": "integer"
+                },
+                "role": {
+                    "type": "string"
+                }
+            }
+        },
         "auth.loginRequest": {
             "type": "object",
             "required": [
@@ -158,6 +316,40 @@ const docTemplate = `{
                 "password": {
                     "type": "string",
                     "minLength": 1
+                }
+            }
+        },
+        "auth.recoverRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "email",
+                "phone"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "maxLength": 32,
+                    "minLength": 1
+                },
+                "email": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string",
+                    "maxLength": 32,
+                    "minLength": 1
+                }
+            }
+        },
+        "auth.recoverResponse": {
+            "type": "object",
+            "properties": {
+                "event_id": {
+                    "type": "integer"
+                },
+                "guest_id": {
+                    "type": "integer"
                 }
             }
         },
