@@ -181,6 +181,22 @@ definitions:
       role:
         type: string
     type: object
+  events.templateItem:
+    properties:
+      content:
+        type: object
+      description:
+        type: string
+      label:
+        type: string
+    type: object
+  events.templatesResponse:
+    properties:
+      templates:
+        items:
+          $ref: '#/definitions/events.templateItem'
+        type: array
+    type: object
 info:
   contact: {}
   title: go-split-backend service
@@ -446,6 +462,27 @@ paths:
         "200":
           description: ok
       summary: Health check
+  /templates:
+    get:
+      description: |-
+        Returns each seeded template with its label, description, and
+        full JSON content (item_tags, cond_tags, rules). The client
+        caches this for the create-event picker and reuses the
+        content when applying a template to a new event's settings.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/events.templatesResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/events.errorResponse'
+      summary: List every template in the catalog
+      tags:
+      - templates
 schemes:
 - https
 swagger: "2.0"

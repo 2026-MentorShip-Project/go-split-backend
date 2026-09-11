@@ -370,6 +370,32 @@
                     }
                 }
             }
+        },
+        "/templates": {
+            "get": {
+                "description": "Returns each seeded template with its label, description, and\nfull JSON content (item_tags, cond_tags, rules). The client\ncaches this for the create-event picker and reuses the\ncontent when applying a template to a new event's settings.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "templates"
+                ],
+                "summary": "List every template in the catalog",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/events.templatesResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -636,6 +662,31 @@
                 },
                 "role": {
                     "type": "string"
+                }
+            }
+        },
+        "events.templateItem": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "object"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                }
+            }
+        },
+        "events.templatesResponse": {
+            "type": "object",
+            "properties": {
+                "templates": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/events.templateItem"
+                    }
                 }
             }
         }

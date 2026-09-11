@@ -25,6 +25,8 @@ func (h *Handler) Register(r gin.IRouter) {
 	g.GET("", h.GetEvents)
 	h.registerCreateRoutes(g)
 	h.registerJoinRoutes(g)
+
+	h.registerTemplateRoutes(r)
 }
 
 // eventListItem is one row of the dashboard.
