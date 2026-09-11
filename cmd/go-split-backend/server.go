@@ -17,6 +17,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
+	swaggerfiles "github.com/swaggo/files"
+	ginswagger "github.com/swaggo/gin-swagger"
+
+	_ "go-split-backend/docs"
 )
 
 // @title go-split-backend service
@@ -39,6 +43,7 @@ func main() {
 	r.Use(gin.RecoveryWithWriter(io.Discard, jsonRecoveryHandler))
 
 	r.GET("/healthz", controller.HealthCheck)
+	r.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
 	s := &http.Server{
 		Addr:    ":8080",
 		Handler: r,

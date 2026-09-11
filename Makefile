@@ -14,6 +14,7 @@ REQ_EXECUTABLES := helm kubectl vault consul-template kubectx
 .PHONY: install-tool
 install-tool:
 	go install go.uber.org/mock/mockgen@v0.6.0
+	go install github.com/swaggo/swag/cmd/swag@v1.16.4
 	go install golang.org/x/tools/cmd/goimports@v0.41.0
 	brew install golangci-lint
 
