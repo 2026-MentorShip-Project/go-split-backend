@@ -92,6 +92,42 @@ definitions:
     - name
     - password
     type: object
+  events.createEventRequest:
+    properties:
+      ends_at:
+        type: string
+      name:
+        maxLength: 120
+        minLength: 1
+        type: string
+      place:
+        maxLength: 200
+        type: string
+      starts_at:
+        type: string
+      template:
+        type: string
+    required:
+    - name
+    - template
+    type: object
+  events.createEventResponse:
+    properties:
+      ends_at:
+        type: string
+      id:
+        type: integer
+      invite_code:
+        type: string
+      name:
+        type: string
+      place:
+        type: string
+      starts_at:
+        type: string
+      template:
+        type: string
+    type: object
   events.errorResponse:
     properties:
       error:
@@ -320,6 +356,43 @@ paths:
           schema:
             $ref: '#/definitions/events.errorResponse'
       summary: List the current user's events
+      tags:
+      - events
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Host-only. Persists the event, adds the host to event_members
+        with role 'host', and issues an invite code atomically. The
+        response carries the code so the client can jump straight to
+        the invite screen without a second round-trip.
+      parameters:
+      - description: New event
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/events.createEventRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/events.createEventResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/events.errorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/events.errorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/events.errorResponse'
+      summary: Create a new event
       tags:
       - events
   /events/join:
