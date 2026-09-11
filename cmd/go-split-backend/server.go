@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"go-split-backend/internal/auth"
 	"go-split-backend/internal/controller"
 	"go-split-backend/internal/database"
 
@@ -49,6 +50,8 @@ func main() {
 
 	r.GET("/healthz", controller.HealthCheck)
 	r.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
+
+	auth.New(db).Register(r)
 	s := &http.Server{
 		Addr:    ":8080",
 		Handler: r,
