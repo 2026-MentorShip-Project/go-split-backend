@@ -1,0 +1,77 @@
+{
+  "label": "烤肉/露營模板",
+  "description": "依飲食習慣分攤",
+  "item_tags": [
+    "肉品",
+    "蔬菜",
+    "海鮮",
+    "主食",
+    "水果",
+    "甜點",
+    "酒精飲品",
+    "無酒精飲品",
+    "調味料",
+    "烤肉工具",
+    "露營工具",
+    "免洗餐具",
+    "清潔用品",
+    "場地費",
+    "設備租借費",
+    "交通費"
+  ],
+  "cond_tags": [
+    "吃素",
+    "大人",
+    "小孩",
+    "晚到",
+    "海鮮過敏",
+    "不喝酒/開車",
+    "自行前往",
+    "需搭主辦的車"
+  ],
+  "rules": [
+    {
+      "tag": "肉品",
+      "groups": [
+        { "conds": ["吃素"],  "mode": "exclude" },
+        { "conds": ["小孩"],  "mode": "weight", "weight": 0.5 },
+        { "conds": ["晚到"],  "mode": "weight", "weight": 0.5 }
+      ]
+    },
+    {
+      "tag": "蔬菜",
+      "groups": [
+        { "conds": ["吃素"], "mode": "weight", "weight": 1.5 },
+        { "conds": ["小孩"], "mode": "weight", "weight": 0.5 }
+      ]
+    },
+    {
+      "tag": "海鮮",
+      "groups": [
+        { "conds": ["海鮮過敏"], "mode": "exclude" },
+        { "conds": ["小孩"],     "mode": "weight", "weight": 0.5 }
+      ]
+    },
+    {
+      "tag": "主食",
+      "groups": [
+        { "conds": ["小孩"], "mode": "weight", "weight": 0.5 }
+      ]
+    },
+    {
+      "tag": "酒精飲品",
+      "groups": [
+        { "conds": ["不喝酒/開車"], "mode": "exclude" },
+        { "conds": ["小孩"],       "mode": "exclude" }
+      ]
+    },
+    {
+      "tag": "交通費",
+      "groups": [
+        { "conds": ["自行前往"],     "mode": "exclude" },
+        { "conds": ["需搭主辦的車"], "mode": "weight", "weight": 1 }
+      ],
+      "rest": { "mode": "exclude" }
+    }
+  ]
+}
