@@ -127,6 +127,24 @@ definitions:
           $ref: '#/definitions/events.eventListItem'
         type: array
     type: object
+  events.joinRequest:
+    properties:
+      code:
+        maxLength: 32
+        minLength: 1
+        type: string
+    required:
+    - code
+    type: object
+  events.joinResponse:
+    properties:
+      event_id:
+        type: integer
+      name:
+        type: string
+      role:
+        type: string
+    type: object
 info:
   contact: {}
   title: go-split-backend service
@@ -302,6 +320,48 @@ paths:
           schema:
             $ref: '#/definitions/events.errorResponse'
       summary: List the current user's events
+      tags:
+      - events
+  /events/join:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Attach the current session's user to the event named by the
+        code as a participant. Idempotent: an existing membership
+        keeps its role (a co-organizer promoted by the host stays
+        a co-organizer). Rejects codes for settled events with 410.
+      parameters:
+      - description: Invite code
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/events.joinRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/events.joinResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/events.errorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/events.errorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/events.errorResponse'
+        "410":
+          description: Gone
+          schema:
+            $ref: '#/definitions/events.errorResponse'
+      summary: Join an existing event by invite code
       tags:
       - events
   /healthz:

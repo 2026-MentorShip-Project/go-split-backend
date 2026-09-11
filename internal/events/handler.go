@@ -23,6 +23,7 @@ func New(db *pgxpool.Pool) *Handler { return &Handler{DB: db} }
 func (h *Handler) Register(r gin.IRouter) {
 	g := r.Group("/events", auth.RequireSession(h.DB))
 	g.GET("", h.GetEvents)
+	h.registerJoinRoutes(g)
 }
 
 // eventListItem is one row of the dashboard.
