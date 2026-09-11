@@ -15,6 +15,7 @@ import (
 	"go-split-backend/internal/auth"
 	"go-split-backend/internal/controller"
 	"go-split-backend/internal/database"
+	"go-split-backend/internal/events"
 
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
@@ -52,6 +53,7 @@ func main() {
 	r.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
 
 	auth.New(db).Register(r)
+	events.New(db).Register(r)
 	s := &http.Server{
 		Addr:    ":8080",
 		Handler: r,

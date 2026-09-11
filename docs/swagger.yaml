@@ -92,6 +92,41 @@ definitions:
     - name
     - password
     type: object
+  events.errorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  events.eventListItem:
+    properties:
+      archived:
+        type: boolean
+      ends_at:
+        type: string
+      id:
+        type: integer
+      member_count:
+        type: integer
+      name:
+        type: string
+      place:
+        type: string
+      role:
+        type: string
+      settled:
+        type: boolean
+      starts_at:
+        type: string
+      template:
+        type: string
+    type: object
+  events.eventsResponse:
+    properties:
+      events:
+        items:
+          $ref: '#/definitions/events.eventListItem'
+        type: array
+    type: object
 info:
   contact: {}
   title: go-split-backend service
@@ -249,6 +284,26 @@ paths:
       summary: Register a host account
       tags:
       - auth
+  /events:
+    get:
+      description: |-
+        Returns every event the caller belongs to (as host, co, or
+        member), each with role, member count, settled and archived
+        flags, and template. Sorted newest event first.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/events.eventsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/events.errorResponse'
+      summary: List the current user's events
+      tags:
+      - events
   /healthz:
     get:
       description: Usage for checking service liveness
