@@ -22,6 +22,8 @@ func (h *Handler) registerItemRoutes(g *gin.RouterGroup) {
 	g.GET("/:id/items", anyRole, h.GetItems)
 	g.GET("/:id/items/:item_id", anyRole, h.GetItem)
 	g.POST("/:id/items", writeRole, h.PostItem)
+	g.PATCH("/:id/items/:item_id", writeRole, h.PatchItem)
+	g.DELETE("/:id/items/:item_id", writeRole, h.DeleteItem)
 }
 
 type itemDTO struct {
@@ -307,4 +309,173 @@ func itemIDFromPath(c *gin.Context) (int64, bool) {
 		return 0, false
 	}
 	return id, true
+}
+
+type updateItemRequest struct {
+	PayerMemberID *int64                `json:"payer_member_id,omitempty"`
+	HasReceipt    *bool                 `json:"has_receipt,omitempty"`
+	Details       []createDetailRequest `json:"details,omitempty"`
+}
+
+// PatchItem godoc
+// @Summary     Update an item
+// @Description Host or the co-organizer who authored the item may call.
+// @Description Partial update on payer / has_receipt. If details is present
+// @Description the whole detail set is replaced atomically.
+// @Tags        items
+// @Accept      json
+// @Produce     json
+// @Param       id      path int                true "Event id"
+// @Param       item_id path int                true "Item id"
+// @Param       body    body updateItemRequest true "Fields to change"
+// @Success     200     {object} itemDTO
+// @Failure     400     {object} errorResponse
+// @Failure     401     {object} errorResponse
+// @Failure     403     {object} errorResponse
+// @Failure     404     {object} errorResponse
+// @Router      /events/{id}/items/{item_id} [patch]
+func (h *Handler) PatchItem(c *gin.Context) {
+	itemID, ok := itemIDFromPath(c)
+	if !ok {
+		respondErr(c, http.StatusBadRequest, "invalid item id")
+		return
+	}
+	var req updateItemRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondErr(c, http.StatusBadRequest, "invalid request: "+err.Error())
+		return
+	}
+	eventID := eventIDFromPath(c)
+	if !authorMayMutate(c, h.DB, eventID, itemID) {
+		return
+	}
+	if req.PayerMemberID != nil {
+		if err := validatePayer(c.Request.Context(), h.DB, eventID, *req.PayerMemberID); err != nil {
+			if errors.Is(err, errPayerNotInEvent) {
+				respondErr(c, http.StatusBadRequest, "payer is not a member of this event")
+				return
+			}
+			respondErr(c, http.StatusInternalServerError, "verify payer")
+			return
+		}
+	}
+
+	if err := updateItemTx(c.Request.Context(), h.DB, eventID, itemID, req); err != nil {
+		respondErr(c, http.StatusInternalServerError, "update item")
+		return
+	}
+	items, err := loadItems(c.Request.Context(), h.DB, eventID, itemID)
+	if err != nil || len(items) == 0 {
+		respondErr(c, http.StatusInternalServerError, "reload item")
+		return
+	}
+	c.JSON(http.StatusOK, items[0])
+}
+
+// DeleteItem godoc
+// @Summary     Delete an item
+// @Description Host or the co-organizer who authored the item may call.
+// @Tags        items
+// @Produce     json
+// @Param       id      path int true "Event id"
+// @Param       item_id path int true "Item id"
+// @Success     204     "no content"
+// @Failure     400     {object} errorResponse
+// @Failure     401     {object} errorResponse
+// @Failure     403     {object} errorResponse
+// @Failure     404     {object} errorResponse
+// @Router      /events/{id}/items/{item_id} [delete]
+func (h *Handler) DeleteItem(c *gin.Context) {
+	itemID, ok := itemIDFromPath(c)
+	if !ok {
+		respondErr(c, http.StatusBadRequest, "invalid item id")
+		return
+	}
+	eventID := eventIDFromPath(c)
+	if !authorMayMutate(c, h.DB, eventID, itemID) {
+		return
+	}
+	if _, err := h.DB.Exec(c.Request.Context(),
+		`DELETE FROM items WHERE id = $1 AND event_id = $2`, itemID, eventID); err != nil {
+		respondErr(c, http.StatusInternalServerError, "delete item")
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func authorMayMutate(c *gin.Context, db *pgxpool.Pool, eventID, itemID int64) bool {
+	var authorID int64
+	err := db.QueryRow(c.Request.Context(),
+		`SELECT author_member_id FROM items WHERE id = $1 AND event_id = $2`,
+		itemID, eventID).Scan(&authorID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		respondErr(c, http.StatusNotFound, "item not found")
+		return false
+	}
+	if err != nil {
+		respondErr(c, http.StatusInternalServerError, "load item")
+		return false
+	}
+	if auth.EventRole(c) == "host" {
+		return true
+	}
+	if authorID != auth.EventMemberID(c) {
+		respondErr(c, http.StatusForbidden, "only the author or host may modify")
+		return false
+	}
+	return true
+}
+
+func updateItemTx(ctx context.Context, db *pgxpool.Pool, eventID, itemID int64, req updateItemRequest) error {
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var (
+		payerArg   any
+		receiptArg any
+	)
+	if req.PayerMemberID != nil {
+		payerArg = *req.PayerMemberID
+	}
+	if req.HasReceipt != nil {
+		receiptArg = *req.HasReceipt
+	}
+	tag, err := tx.Exec(ctx, `
+		UPDATE items
+		   SET payer_member_id = COALESCE($1, payer_member_id),
+		       has_receipt     = COALESCE($2, has_receipt)
+		 WHERE id = $3 AND event_id = $4`,
+		payerArg, receiptArg, itemID, eventID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+
+	if req.Details != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM item_details WHERE item_id = $1`, itemID); err != nil {
+			return err
+		}
+		for i, d := range req.Details {
+			shares := d.CustomShares
+			if shares == nil {
+				shares = map[string]int64{}
+			}
+			sharesJSON, err := json.Marshal(shares)
+			if err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO item_details (item_id, ordinal, name, amount_cents, tag, note, custom_shares)
+				VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+				itemID, i, d.Name, d.AmountCents, d.Tag, d.Note, sharesJSON); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit(ctx)
 }
