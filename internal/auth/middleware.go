@@ -1,16 +1,20 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// subjectCtxKey is the gin.Context key under which the current Subject is
-// stored. Downstream handlers read it via CurrentSubject.
-const subjectCtxKey = "auth.subject"
+const (
+	subjectCtxKey   = "auth.subject"
+	eventRoleCtxKey = "auth.event_role"
+)
 
 // RequireSession returns a middleware that rejects any request without a
 // valid session cookie and attaches the resolved Subject to the context.
@@ -39,4 +43,64 @@ func CurrentSubject(c *gin.Context) Subject {
 	}
 	sub, _ := v.(Subject)
 	return sub
+}
+
+// RequireEventRole returns a middleware that looks up the caller's role on
+// the event named by the :id path param and aborts with 403 unless that role
+// is in allowed. Must run after RequireSession. Stashes the resolved role
+// for downstream handlers to read via EventRole.
+func RequireEventRole(db *pgxpool.Pool, allowed ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		eventID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil || eventID <= 0 {
+			c.AbortWithStatusJSON(http.StatusBadRequest, errorResponse{Error: "invalid event id"})
+			return
+		}
+		sub := CurrentSubject(c)
+		if !sub.IsHost() && !sub.IsGuest() {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, errorResponse{Error: "not signed in"})
+			return
+		}
+		role, err := lookupEventRole(c.Request.Context(), db, eventID, sub)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				c.AbortWithStatusJSON(http.StatusForbidden, errorResponse{Error: "not a member of this event"})
+				return
+			}
+			c.AbortWithStatusJSON(http.StatusInternalServerError, errorResponse{Error: "role lookup failed"})
+			return
+		}
+		for _, a := range allowed {
+			if role == a {
+				c.Set(eventRoleCtxKey, role)
+				c.Next()
+				return
+			}
+		}
+		c.AbortWithStatusJSON(http.StatusForbidden, errorResponse{Error: "insufficient role"})
+	}
+}
+
+// EventRole returns the role stashed by RequireEventRole, or the empty
+// string if the middleware did not run.
+func EventRole(c *gin.Context) string {
+	v, ok := c.Get(eventRoleCtxKey)
+	if !ok {
+		return ""
+	}
+	s, _ := v.(string)
+	return s
+}
+
+func lookupEventRole(ctx context.Context, db *pgxpool.Pool, eventID int64, sub Subject) (string, error) {
+	var role string
+	err := db.QueryRow(ctx, `
+		SELECT role::text
+		  FROM event_members
+		 WHERE event_id = $1
+		   AND (($2 <> 0 AND host_id  = $2)
+		     OR ($3 <> 0 AND guest_id = $3))
+		 LIMIT 1`,
+		eventID, sub.HostID, sub.GuestID).Scan(&role)
+	return role, err
 }

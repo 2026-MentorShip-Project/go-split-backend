@@ -22,3 +22,14 @@ func TestCurrentSubjectRoundTrip(t *testing.T) {
 		t.Fatalf("CurrentSubject = %+v; want %+v", got, want)
 	}
 }
+
+func TestEventRoleRoundTrip(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	if EventRole(c) != "" {
+		t.Fatal("EventRole on bare context must be empty")
+	}
+	c.Set(eventRoleCtxKey, "co")
+	if got := EventRole(c); got != "co" {
+		t.Fatalf("EventRole = %q; want %q", got, "co")
+	}
+}

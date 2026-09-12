@@ -362,6 +362,303 @@ const docTemplate = `{
                 }
             }
         },
+        "/events/{id}/members": {
+            "get": {
+                "description": "Any member of the event may call. Each row carries role,\ncondition tags, guest flag, and a \"you\" marker on the\ncaller's own row.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "members"
+                ],
+                "summary": "List members of an event",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/events.membersResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Host-only. Creates a seat-holder row with no host or guest\nidentity yet; use invite codes to bind a real session.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "members"
+                ],
+                "summary": "Add a placeholder member to an event",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New member",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/events.createMemberRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/events.memberDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/events/{id}/members/{member_id}": {
+            "delete": {
+                "description": "Host-only. Refuses to remove the sole host of the event.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "members"
+                ],
+                "summary": "Remove a member",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Member id",
+                        "name": "member_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "no content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "description": "Host-only. Partial update of display name, role, or tags.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "members"
+                ],
+                "summary": "Update a member",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Member id",
+                        "name": "member_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to change",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/events.updateMemberRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/events.memberDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/events/{id}/members/{member_id}/role": {
+            "get": {
+                "description": "Any member of the event may call. Returns the role stored on\nthe event_members row (host, co, or member).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "members"
+                ],
+                "summary": "Get a member's role in an event",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Member id",
+                        "name": "member_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/events.roleResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/healthz": {
             "get": {
                 "description": "Usage for checking service liveness",
@@ -589,6 +886,34 @@ const docTemplate = `{
                 }
             }
         },
+        "events.createMemberRequest": {
+            "type": "object",
+            "required": [
+                "display",
+                "role"
+            ],
+            "properties": {
+                "display": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "minLength": 1
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "host",
+                        "co",
+                        "member"
+                    ]
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "events.errorResponse": {
             "type": "object",
             "properties": {
@@ -670,6 +995,51 @@ const docTemplate = `{
                 }
             }
         },
+        "events.memberDTO": {
+            "type": "object",
+            "properties": {
+                "display": {
+                    "type": "string"
+                },
+                "guest": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "you": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "events.membersResponse": {
+            "type": "object",
+            "properties": {
+                "members": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/events.memberDTO"
+                    }
+                }
+            }
+        },
+        "events.roleResponse": {
+            "type": "object",
+            "properties": {
+                "role": {
+                    "type": "string"
+                }
+            }
+        },
         "events.templateItem": {
             "type": "object",
             "properties": {
@@ -691,6 +1061,28 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/events.templateItem"
+                    }
+                }
+            }
+        },
+        "events.updateMemberRequest": {
+            "type": "object",
+            "properties": {
+                "display": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "host",
+                        "co",
+                        "member"
+                    ]
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
                     }
                 }
             }
