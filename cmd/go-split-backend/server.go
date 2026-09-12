@@ -44,7 +44,6 @@ func main() {
 		log.Fatalf("Failed to run migrations, err: %v", err)
 	}
 
-	// Example GIN service
 	r := gin.New()
 
 	r.Use(gin.RecoveryWithWriter(io.Discard, jsonRecoveryHandler))
