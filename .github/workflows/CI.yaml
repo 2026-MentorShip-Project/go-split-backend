@@ -72,7 +72,7 @@ jobs:
           go-version-file: go.mod
       - uses: grafana/setup-k6-action@v1
         with:
-          k6-version: 'v1.6.1'
+          k6-version: '1.6.1'
       - name: Build, migrate, and start server
         run: |
           mkdir -p artifacts
