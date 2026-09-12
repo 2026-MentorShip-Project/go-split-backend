@@ -23,6 +23,7 @@ type joinRequest struct {
 	Code  string `json:"code"  binding:"required,min=1,max=32"`
 	Email string `json:"email" binding:"required,email"`
 	Phone string `json:"phone" binding:"required,min=1,max=32"`
+	Name  string `json:"name"  binding:"required,min=1,max=64"`
 }
 
 type joinResponse struct {
@@ -71,13 +72,13 @@ func (h *Handler) PostJoin(c *gin.Context) {
 		return
 	}
 
-	guestID, err := upsertGuest(ctx, h.DB, req.Email, req.Phone)
+	guestID, err := upsertGuest(ctx, h.DB, req.Email, req.Phone, req.Name)
 	if err != nil {
 		respondErr(c, http.StatusInternalServerError, "create guest")
 		return
 	}
 
-	role, err := attachGuestToEvent(ctx, h.DB, eventID, guestID, req.Email)
+	role, err := attachGuestToEvent(ctx, h.DB, eventID, guestID, req.Name)
 	if err != nil {
 		respondErr(c, http.StatusInternalServerError, "attach guest to event")
 		return
@@ -91,7 +92,11 @@ func (h *Handler) PostJoin(c *gin.Context) {
 	c.JSON(http.StatusOK, joinResponse{GuestID: guestID, EventID: eventID, Role: role})
 }
 
-type recoverRequest = joinRequest
+type recoverRequest struct {
+	Code  string `json:"code"  binding:"required,min=1,max=32"`
+	Email string `json:"email" binding:"required,email"`
+	Phone string `json:"phone" binding:"required,min=1,max=32"`
+}
 
 type recoverResponse struct {
 	GuestID int64 `json:"guest_id"`
@@ -191,12 +196,12 @@ func lookupInvite(ctx context.Context, db *pgxpool.Pool, code string) (int64, bo
 	return eventID, settled, err
 }
 
-func upsertGuest(ctx context.Context, db *pgxpool.Pool, email, phone string) (int64, error) {
+func upsertGuest(ctx context.Context, db *pgxpool.Pool, email, phone, name string) (int64, error) {
 	var id int64
 	err := db.QueryRow(ctx, `
-		INSERT INTO guests (email, phone) VALUES ($1, $2)
-		ON CONFLICT (email, phone) DO UPDATE SET email = EXCLUDED.email
-		RETURNING id`, email, phone).Scan(&id)
+		INSERT INTO guests (email, phone, name) VALUES ($1, $2, $3)
+		ON CONFLICT (email, phone) DO UPDATE SET name = EXCLUDED.name
+		RETURNING id`, email, phone, name).Scan(&id)
 	return id, err
 }
 

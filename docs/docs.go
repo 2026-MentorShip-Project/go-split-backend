@@ -728,6 +728,7 @@ const docTemplate = `{
             "required": [
                 "code",
                 "email",
+                "name",
                 "phone"
             ],
             "properties": {
@@ -738,6 +739,11 @@ const docTemplate = `{
                 },
                 "email": {
                     "type": "string"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "minLength": 1
                 },
                 "phone": {
                     "type": "string",
