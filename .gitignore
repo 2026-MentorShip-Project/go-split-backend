@@ -65,3 +65,5 @@ secrets/
 # swag-generated data files; docs/docs.go stays committed for runtime.
 docs/swagger.json
 docs/swagger.yaml
+
+/artifacts/

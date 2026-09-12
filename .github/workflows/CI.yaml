@@ -1,0 +1,114 @@
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Unit tests
+        run: go test -count=1 -cover ./...
+      - name: Race tests
+        run: go test -count=1 -race ./...
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          args: --build-tags=e2e --timeout=5m
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: go_split_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d go_split_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: '5432'
+      DB_USER: ci
+      DB_PASSWORD: ci-password
+      DB_NAME: go_split_ci
+      BASE_URL: http://127.0.0.1:8080
+      GIN_MODE: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: grafana/setup-k6-action@v1
+        with:
+          k6-version: '1.6.1'
+      - name: Build, migrate, and start server
+        run: |
+          mkdir -p artifacts
+          go build -o artifacts/server ./cmd/go-split-backend
+          go run ./cmd/seed-templates
+          ./artifacts/server > artifacts/server.log 2>&1 &
+          echo $! > artifacts/server.pid
+          for attempt in {1..30}; do
+            if curl --fail --silent "$BASE_URL/healthz"; then exit 0; fi
+            if ! kill -0 "$(cat artifacts/server.pid)"; then break; fi
+            sleep 1
+          done
+          cat artifacts/server.log
+          exit 1
+      - name: API E2E
+        run: |
+          set -o pipefail
+          go test -tags=e2e -count=1 -v -timeout=2m ./tests/e2e -run '^TestEventJourney$' | tee artifacts/e2e.log
+      - name: Small load test
+        env:
+          RUN_LOAD: '1'
+        run: |
+          set -o pipefail
+          go test -tags=e2e -count=1 -v -timeout=2m ./tests/e2e -run '^TestSmallLoad$' | tee artifacts/load.log
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -f artifacts/server.pid ]; then
+            kill "$(cat artifacts/server.pid)" || true
+          fi
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-results
+          retention-days: 7
+          path: |
+            artifacts/*.log
+            artifacts/*summary.json
