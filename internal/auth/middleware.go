@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	subjectCtxKey   = "auth.subject"
-	eventRoleCtxKey = "auth.event_role"
+	subjectCtxKey       = "auth.subject"
+	eventRoleCtxKey     = "auth.event_role"
+	eventMemberIDCtxKey = "auth.event_member_id"
 )
 
 // RequireSession returns a middleware that rejects any request without a
@@ -61,7 +62,7 @@ func RequireEventRole(db *pgxpool.Pool, allowed ...string) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, errorResponse{Error: "not signed in"})
 			return
 		}
-		role, err := lookupEventRole(c.Request.Context(), db, eventID, sub)
+		memberID, role, err := lookupEventRole(c.Request.Context(), db, eventID, sub)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				c.AbortWithStatusJSON(http.StatusForbidden, errorResponse{Error: "not a member of this event"})
@@ -73,6 +74,7 @@ func RequireEventRole(db *pgxpool.Pool, allowed ...string) gin.HandlerFunc {
 		for _, a := range allowed {
 			if role == a {
 				c.Set(eventRoleCtxKey, role)
+				c.Set(eventMemberIDCtxKey, memberID)
 				c.Next()
 				return
 			}
@@ -92,15 +94,29 @@ func EventRole(c *gin.Context) string {
 	return s
 }
 
-func lookupEventRole(ctx context.Context, db *pgxpool.Pool, eventID int64, sub Subject) (string, error) {
-	var role string
+// EventMemberID returns the caller's event_members.id stashed by
+// RequireEventRole, or 0 if the middleware did not run.
+func EventMemberID(c *gin.Context) int64 {
+	v, ok := c.Get(eventMemberIDCtxKey)
+	if !ok {
+		return 0
+	}
+	id, _ := v.(int64)
+	return id
+}
+
+func lookupEventRole(ctx context.Context, db *pgxpool.Pool, eventID int64, sub Subject) (int64, string, error) {
+	var (
+		memberID int64
+		role     string
+	)
 	err := db.QueryRow(ctx, `
-		SELECT role::text
+		SELECT id, role::text
 		  FROM event_members
 		 WHERE event_id = $1
 		   AND (($2 <> 0 AND host_id  = $2)
 		     OR ($3 <> 0 AND guest_id = $3))
 		 LIMIT 1`,
-		eventID, sub.HostID, sub.GuestID).Scan(&role)
-	return role, err
+		eventID, sub.HostID, sub.GuestID).Scan(&memberID, &role)
+	return memberID, role, err
 }

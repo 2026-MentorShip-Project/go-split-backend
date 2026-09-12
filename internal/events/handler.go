@@ -26,6 +26,7 @@ func (h *Handler) Register(r gin.IRouter) {
 	h.registerCreateRoutes(g)
 	h.registerJoinRoutes(g)
 	h.registerMemberRoutes(g)
+	h.registerItemRoutes(g)
 
 	h.registerTemplateRoutes(r)
 }
