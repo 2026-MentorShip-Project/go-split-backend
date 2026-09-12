@@ -255,6 +255,20 @@ func (h *Handler) DeleteMember(c *gin.Context) {
 		}
 	}
 
+	var itemCount int
+	if err := tx.QueryRow(ctx, `
+		SELECT COUNT(*) FROM items
+		 WHERE event_id = $1
+		   AND (payer_member_id = $2 OR author_member_id = $2)`,
+		eventID, memberID).Scan(&itemCount); err != nil {
+		respondErr(c, http.StatusInternalServerError, "count items")
+		return
+	}
+	if itemCount > 0 {
+		respondErr(c, http.StatusConflict, "cannot remove a member who owns items")
+		return
+	}
+
 	if _, err := tx.Exec(ctx,
 		`DELETE FROM event_members WHERE id = $1 AND event_id = $2`,
 		memberID, eventID); err != nil {
