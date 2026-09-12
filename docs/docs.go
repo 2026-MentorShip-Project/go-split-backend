@@ -362,6 +362,59 @@ const docTemplate = `{
                 }
             }
         },
+        "/events/{id}": {
+            "get": {
+                "description": "Any member of the event may call. Returns the event\nmetadata, the current invite code, every member with role\nand tags, every item card with its detail lines, and the\ngrand total in cents so the event page's header can render\nwithout a second round-trip.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Get one event with members, items, and totals",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/events.eventDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/events/{id}/items": {
             "get": {
                 "description": "Any member may call. Cards ordered newest first, details\nwithin a card ordered by ordinal.",
@@ -1295,6 +1348,59 @@ const docTemplate = `{
             "properties": {
                 "error": {
                     "type": "string"
+                }
+            }
+        },
+        "events.eventDetailResponse": {
+            "type": "object",
+            "properties": {
+                "archived": {
+                    "type": "boolean"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "ends_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "invite_code": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/events.itemDTO"
+                    }
+                },
+                "members": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/events.memberDTO"
+                    }
+                },
+                "my_role": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "place": {
+                    "type": "string"
+                },
+                "settled": {
+                    "type": "boolean"
+                },
+                "starts_at": {
+                    "type": "string"
+                },
+                "template": {
+                    "type": "string"
+                },
+                "total_cents": {
+                    "type": "integer"
                 }
             }
         },

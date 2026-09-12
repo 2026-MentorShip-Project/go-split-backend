@@ -25,6 +25,7 @@ func (h *Handler) Register(r gin.IRouter) {
 	g.GET("", h.GetEvents)
 	h.registerCreateRoutes(g)
 	h.registerJoinRoutes(g)
+	h.registerDetailRoutes(g)
 	h.registerMemberRoutes(g)
 	h.registerItemRoutes(g)
 
