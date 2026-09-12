@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
@@ -28,6 +29,9 @@ func (h *Handler) registerSettingsRoutes(g *gin.RouterGroup) {
 	g.DELETE("/:id/tags/conds/:label", hostOnly, h.DeleteCondTag)
 
 	g.GET("/:id/rules", anyRole, h.GetRules)
+	g.POST("/:id/rules", hostOnly, h.PostRule)
+	g.PATCH("/:id/rules/:rule_id", hostOnly, h.PatchRule)
+	g.DELETE("/:id/rules/:rule_id", hostOnly, h.DeleteRule)
 }
 
 type labelsResponse struct {
@@ -397,4 +401,201 @@ func (h *Handler) removeTag(c *gin.Context, table string) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+type ruleBodyRequest struct {
+	ItemTag string          `json:"item_tag"        binding:"required,min=1,max=64"`
+	Groups  json.RawMessage `json:"groups"          swaggertype:"array,object"`
+	Rest    json.RawMessage `json:"rest,omitempty"  swaggertype:"object"`
+}
+
+type ruleUpdateRequest struct {
+	Groups *json.RawMessage `json:"groups,omitempty" swaggertype:"array,object"`
+	Rest   *json.RawMessage `json:"rest,omitempty"   swaggertype:"object"`
+}
+
+// PostRule godoc
+// @Summary     Add a rule to an event
+// @Description Host-only. Appends to the end of the rule list. item_tag
+// @Description must be unique per event; a duplicate returns 409.
+// @Tags        settings
+// @Accept      json
+// @Produce     json
+// @Param       id   path int              true "Event id"
+// @Param       body body ruleBodyRequest true "New rule"
+// @Success     201  {object} ruleDTO
+// @Failure     400  {object} errorResponse
+// @Failure     401  {object} errorResponse
+// @Failure     403  {object} errorResponse
+// @Failure     409  {object} errorResponse
+// @Router      /events/{id}/rules [post]
+func (h *Handler) PostRule(c *gin.Context) {
+	var req ruleBodyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondErr(c, http.StatusBadRequest, "invalid request: "+err.Error())
+		return
+	}
+	eventID := eventIDFromPath(c)
+	groups := req.Groups
+	if len(groups) == 0 {
+		groups = json.RawMessage(`[]`)
+	}
+	var restArg any
+	if len(req.Rest) > 0 && string(req.Rest) != "null" {
+		restArg = string(req.Rest)
+	}
+
+	var r ruleDTO
+	var restText string
+	err := h.DB.QueryRow(c.Request.Context(), `
+		INSERT INTO event_rules (event_id, item_tag, groups, rest, ordinal)
+		VALUES ($1, $2, $3::jsonb, $4::jsonb,
+		        COALESCE((SELECT MAX(ordinal) + 1 FROM event_rules WHERE event_id = $1), 0))
+		RETURNING id, item_tag, groups::text, COALESCE(rest::text, ''), ordinal`,
+		eventID, req.ItemTag, string(groups), restArg,
+	).Scan(&r.ID, &r.ItemTag, (*rawText)(&r.Groups), &restText, &r.Ordinal)
+	if err != nil {
+		if isUniqueViolation(err) {
+			respondErr(c, http.StatusConflict, "a rule for this item tag already exists")
+			return
+		}
+		respondErr(c, http.StatusInternalServerError, "create rule")
+		return
+	}
+	if restText != "" {
+		r.Rest = json.RawMessage(restText)
+	}
+	c.JSON(http.StatusCreated, r)
+}
+
+// PatchRule godoc
+// @Summary     Update a rule's groups or rest bucket
+// @Description Host-only. Partial update — item_tag itself is fixed after
+// @Description creation. Pass null explicitly on rest to clear the
+// @Description fallback and fall back to weight 1.
+// @Tags        settings
+// @Accept      json
+// @Produce     json
+// @Param       id      path int               true "Event id"
+// @Param       rule_id path int               true "Rule id"
+// @Param       body    body ruleUpdateRequest true "Fields to change"
+// @Success     200     {object} ruleDTO
+// @Failure     400     {object} errorResponse
+// @Failure     401     {object} errorResponse
+// @Failure     403     {object} errorResponse
+// @Failure     404     {object} errorResponse
+// @Router      /events/{id}/rules/{rule_id} [patch]
+func (h *Handler) PatchRule(c *gin.Context) {
+	ruleID, ok := ruleIDFromPath(c)
+	if !ok {
+		respondErr(c, http.StatusBadRequest, "invalid rule id")
+		return
+	}
+	var req ruleUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondErr(c, http.StatusBadRequest, "invalid request: "+err.Error())
+		return
+	}
+	eventID := eventIDFromPath(c)
+
+	var (
+		groupsArg any
+		restArg   any
+		restClear bool
+	)
+	if req.Groups != nil {
+		groupsArg = string(*req.Groups)
+	}
+	if req.Rest != nil {
+		if string(*req.Rest) == "null" {
+			restClear = true
+		} else {
+			restArg = string(*req.Rest)
+		}
+	}
+
+	var (
+		r        ruleDTO
+		restText string
+	)
+	err := h.DB.QueryRow(c.Request.Context(), `
+		UPDATE event_rules
+		   SET groups = COALESCE($1::jsonb, groups),
+		       rest   = CASE
+		                  WHEN $2 THEN NULL
+		                  ELSE COALESCE($3::jsonb, rest)
+		                END
+		 WHERE id = $4 AND event_id = $5
+	 RETURNING id, item_tag, groups::text, COALESCE(rest::text, ''), ordinal`,
+		groupsArg, restClear, restArg, ruleID, eventID,
+	).Scan(&r.ID, &r.ItemTag, (*rawText)(&r.Groups), &restText, &r.Ordinal)
+	if errors.Is(err, pgx.ErrNoRows) {
+		respondErr(c, http.StatusNotFound, "rule not found")
+		return
+	}
+	if err != nil {
+		respondErr(c, http.StatusInternalServerError, "update rule")
+		return
+	}
+	if restText != "" {
+		r.Rest = json.RawMessage(restText)
+	}
+	c.JSON(http.StatusOK, r)
+}
+
+// DeleteRule godoc
+// @Summary     Delete a rule
+// @Tags        settings
+// @Produce     json
+// @Param       id      path int true "Event id"
+// @Param       rule_id path int true "Rule id"
+// @Success     204     "no content"
+// @Failure     400     {object} errorResponse
+// @Failure     401     {object} errorResponse
+// @Failure     403     {object} errorResponse
+// @Failure     404     {object} errorResponse
+// @Router      /events/{id}/rules/{rule_id} [delete]
+func (h *Handler) DeleteRule(c *gin.Context) {
+	ruleID, ok := ruleIDFromPath(c)
+	if !ok {
+		respondErr(c, http.StatusBadRequest, "invalid rule id")
+		return
+	}
+	tag, err := h.DB.Exec(c.Request.Context(),
+		`DELETE FROM event_rules WHERE id = $1 AND event_id = $2`,
+		ruleID, eventIDFromPath(c))
+	if err != nil {
+		respondErr(c, http.StatusInternalServerError, "delete rule")
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		respondErr(c, http.StatusNotFound, "rule not found")
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func ruleIDFromPath(c *gin.Context) (int64, bool) {
+	id, err := strconv.ParseInt(c.Param("rule_id"), 10, 64)
+	if err != nil || id <= 0 {
+		return 0, false
+	}
+	return id, true
+}
+
+// rawText scans a text-returning column straight into a json.RawMessage.
+type rawText json.RawMessage
+
+func (r *rawText) Scan(src any) error {
+	switch v := src.(type) {
+	case string:
+		*r = rawText(v)
+	case []byte:
+		*r = append((*r)[:0], v...)
+	case nil:
+		*r = nil
+	default:
+		return errors.New("rawText: unsupported source type")
+	}
+	return nil
 }
