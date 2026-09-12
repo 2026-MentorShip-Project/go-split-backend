@@ -1065,6 +1065,67 @@ const docTemplate = `{
                 }
             }
         },
+        "/events/{id}/pairs/{a}/{b}": {
+            "get": {
+                "description": "Any member may call. Returns every detail that contributes\nto a direct debt between :a and :b, plus the signed net\n(positive: a owes b, negative: b owes a).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "shares"
+                ],
+                "summary": "Item-level breakdown of debt between two members",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Member A id",
+                        "name": "a",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Member B id",
+                        "name": "b",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/events.pairResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/events/{id}/rules": {
             "get": {
                 "produces": [
@@ -2350,6 +2411,46 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/events.memberDTO"
                     }
+                }
+            }
+        },
+        "events.pairLineDTO": {
+            "type": "object",
+            "properties": {
+                "amount_cents": {
+                    "type": "integer"
+                },
+                "detail_id": {
+                    "type": "integer"
+                },
+                "from_id": {
+                    "type": "integer"
+                },
+                "item_id": {
+                    "type": "integer"
+                },
+                "to_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "events.pairResponse": {
+            "type": "object",
+            "properties": {
+                "a_id": {
+                    "type": "integer"
+                },
+                "b_id": {
+                    "type": "integer"
+                },
+                "lines": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/events.pairLineDTO"
+                    }
+                },
+                "net_a_owes_b_cents": {
+                    "type": "integer"
                 }
             }
         },

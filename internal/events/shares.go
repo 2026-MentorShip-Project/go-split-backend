@@ -17,6 +17,7 @@ func (h *Handler) registerSharesRoutes(g *gin.RouterGroup) {
 	anyRole := auth.RequireEventRole(h.DB, "host", "co", "member")
 	g.GET("/:id/shares", anyRole, h.GetShares)
 	g.GET("/:id/transfers", anyRole, h.GetTransfers)
+	g.GET("/:id/pairs/:a/:b", anyRole, h.GetPair)
 }
 
 type memberShareDTO struct {
@@ -310,4 +311,81 @@ func sortInt64s(a []int64) {
 			a[j-1], a[j] = a[j], a[j-1]
 		}
 	}
+}
+
+type pairLineDTO struct {
+	ItemID      int64 `json:"item_id"`
+	DetailID    int64 `json:"detail_id"`
+	FromID      int64 `json:"from_id"`
+	ToID        int64 `json:"to_id"`
+	AmountCents int64 `json:"amount_cents"`
+}
+
+type pairResponse struct {
+	AID       int64         `json:"a_id"`
+	BID       int64         `json:"b_id"`
+	NetAOwesB int64         `json:"net_a_owes_b_cents"`
+	Lines     []pairLineDTO `json:"lines"`
+}
+
+// GetPair godoc
+// @Summary     Item-level breakdown of debt between two members
+// @Description Any member may call. Returns every detail that contributes
+// @Description to a direct debt between :a and :b, plus the signed net
+// @Description (positive: a owes b, negative: b owes a).
+// @Tags        shares
+// @Produce     json
+// @Param       id path int true "Event id"
+// @Param       a  path int true "Member A id"
+// @Param       b  path int true "Member B id"
+// @Success     200 {object} pairResponse
+// @Failure     400 {object} errorResponse
+// @Failure     401 {object} errorResponse
+// @Failure     403 {object} errorResponse
+// @Router      /events/{id}/pairs/{a}/{b} [get]
+func (h *Handler) GetPair(c *gin.Context) {
+	aID, ok := memberParam(c, "a")
+	if !ok {
+		respondErr(c, http.StatusBadRequest, "invalid member a id")
+		return
+	}
+	bID, ok := memberParam(c, "b")
+	if !ok {
+		respondErr(c, http.StatusBadRequest, "invalid member b id")
+		return
+	}
+	if aID == bID {
+		respondErr(c, http.StatusBadRequest, "a and b must be different members")
+		return
+	}
+
+	result, err := computeEventShares(c.Request.Context(), h.DB, eventIDFromPath(c))
+	if err != nil {
+		respondErr(c, http.StatusInternalServerError, "compute shares")
+		return
+	}
+	rawLines := splitengine.PairBreakdown(result.Shares, result.Items, aID, bID)
+
+	out := pairResponse{AID: aID, BID: bID, Lines: make([]pairLineDTO, 0, len(rawLines))}
+	for _, l := range rawLines {
+		out.Lines = append(out.Lines, pairLineDTO{
+			ItemID: l.ItemID, DetailID: l.DetailID,
+			FromID: l.FromID, ToID: l.ToID, AmountCents: l.AmountCents,
+		})
+		switch {
+		case l.FromID == aID && l.ToID == bID:
+			out.NetAOwesB += l.AmountCents
+		case l.FromID == bID && l.ToID == aID:
+			out.NetAOwesB -= l.AmountCents
+		}
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+func memberParam(c *gin.Context, name string) (int64, bool) {
+	v, err := strconv.ParseInt(c.Param(name), 10, 64)
+	if err != nil || v <= 0 {
+		return 0, false
+	}
+	return v, true
 }
