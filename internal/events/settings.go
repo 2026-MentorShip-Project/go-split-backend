@@ -20,7 +20,13 @@ func (h *Handler) registerSettingsRoutes(g *gin.RouterGroup) {
 	g.POST("/:id/apply-template", hostOnly, h.PostApplyTemplate)
 
 	g.GET("/:id/tags/items", anyRole, h.GetItemTagsCatalog)
+	g.POST("/:id/tags/items", hostOnly, h.PostItemTag)
+	g.DELETE("/:id/tags/items/:label", hostOnly, h.DeleteItemTag)
+
 	g.GET("/:id/tags/conds", anyRole, h.GetCondTagsCatalog)
+	g.POST("/:id/tags/conds", hostOnly, h.PostCondTag)
+	g.DELETE("/:id/tags/conds/:label", hostOnly, h.DeleteCondTag)
+
 	g.GET("/:id/rules", anyRole, h.GetRules)
 }
 
@@ -273,4 +279,122 @@ func loadRules(ctx context.Context, db *pgxpool.Pool, eventID int64) ([]ruleDTO,
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+type addLabelRequest struct {
+	Label string `json:"label" binding:"required,min=1,max=64"`
+}
+
+// PostItemTag godoc
+// @Summary     Add an item tag to an event's catalog
+// @Tags        settings
+// @Accept      json
+// @Produce     json
+// @Param       id   path int             true "Event id"
+// @Param       body body addLabelRequest true "Label to add"
+// @Success     201  {object} labelsResponse
+// @Failure     400  {object} errorResponse
+// @Failure     401  {object} errorResponse
+// @Failure     403  {object} errorResponse
+// @Failure     409  {object} errorResponse
+// @Router      /events/{id}/tags/items [post]
+func (h *Handler) PostItemTag(c *gin.Context) {
+	h.appendTag(c, "event_item_tags")
+}
+
+// PostCondTag godoc
+// @Summary     Add a condition tag to an event's catalog
+// @Tags        settings
+// @Accept      json
+// @Produce     json
+// @Param       id   path int             true "Event id"
+// @Param       body body addLabelRequest true "Label to add"
+// @Success     201  {object} labelsResponse
+// @Failure     400  {object} errorResponse
+// @Failure     401  {object} errorResponse
+// @Failure     403  {object} errorResponse
+// @Failure     409  {object} errorResponse
+// @Router      /events/{id}/tags/conds [post]
+func (h *Handler) PostCondTag(c *gin.Context) {
+	h.appendTag(c, "event_cond_tags")
+}
+
+// DeleteItemTag godoc
+// @Summary     Remove an item tag from an event's catalog
+// @Tags        settings
+// @Produce     json
+// @Param       id    path int    true "Event id"
+// @Param       label path string true "Tag label"
+// @Success     204   "no content"
+// @Failure     401   {object} errorResponse
+// @Failure     403   {object} errorResponse
+// @Failure     404   {object} errorResponse
+// @Router      /events/{id}/tags/items/{label} [delete]
+func (h *Handler) DeleteItemTag(c *gin.Context) {
+	h.removeTag(c, "event_item_tags")
+}
+
+// DeleteCondTag godoc
+// @Summary     Remove a condition tag from an event's catalog
+// @Tags        settings
+// @Produce     json
+// @Param       id    path int    true "Event id"
+// @Param       label path string true "Tag label"
+// @Success     204   "no content"
+// @Failure     401   {object} errorResponse
+// @Failure     403   {object} errorResponse
+// @Failure     404   {object} errorResponse
+// @Router      /events/{id}/tags/conds/{label} [delete]
+func (h *Handler) DeleteCondTag(c *gin.Context) {
+	h.removeTag(c, "event_cond_tags")
+}
+
+func (h *Handler) appendTag(c *gin.Context, table string) {
+	var req addLabelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondErr(c, http.StatusBadRequest, "invalid request: "+err.Error())
+		return
+	}
+	eventID := eventIDFromPath(c)
+	ctx := c.Request.Context()
+
+	_, err := h.DB.Exec(ctx,
+		`INSERT INTO `+table+` (event_id, label, ordinal)
+		 VALUES ($1, $2, COALESCE((SELECT MAX(ordinal) + 1 FROM `+table+` WHERE event_id = $1), 0))`,
+		eventID, req.Label)
+	if err != nil {
+		if isUniqueViolation(err) {
+			respondErr(c, http.StatusConflict, "label already exists")
+			return
+		}
+		respondErr(c, http.StatusInternalServerError, "add tag")
+		return
+	}
+	labels, err := loadTagLabels(ctx, h.DB, eventID, table)
+	if err != nil {
+		respondErr(c, http.StatusInternalServerError, "reload tags")
+		return
+	}
+	c.JSON(http.StatusCreated, labelsResponse{Labels: labels})
+}
+
+func (h *Handler) removeTag(c *gin.Context, table string) {
+	eventID := eventIDFromPath(c)
+	label := c.Param("label")
+	if label == "" {
+		respondErr(c, http.StatusBadRequest, "label required")
+		return
+	}
+	tag, err := h.DB.Exec(c.Request.Context(),
+		`DELETE FROM `+table+` WHERE event_id = $1 AND label = $2`,
+		eventID, label)
+	if err != nil {
+		respondErr(c, http.StatusInternalServerError, "delete tag")
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		respondErr(c, http.StatusNotFound, "tag not found")
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
