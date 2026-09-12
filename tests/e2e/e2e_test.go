@@ -87,7 +87,7 @@ func TestEventJourney(t *testing.T) {
 	if event.ID == 0 || event.InviteCode == "" {
 		t.Fatal("missing event ID or invitation")
 	}
-	join := map[string]string{"code": event.InviteCode, "email": account["email"], "phone": "0900000000"}
+	join := map[string]string{"name": "CI guest", "code": event.InviteCode, "email": account["email"], "phone": "0900000000"}
 	request(t, guest, "POST", s.URL+"/auth/join", join, 200, nil)
 	request(t, guest, "POST", s.URL+"/events/join", map[string]string{"code": event.InviteCode}, 200, nil)
 	request(t, guest, "POST", s.URL+"/events", payload, 403, nil)
