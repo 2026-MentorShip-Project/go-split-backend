@@ -1294,6 +1294,47 @@ const docTemplate = `{
                 }
             }
         },
+        "/events/{id}/shares": {
+            "get": {
+                "description": "Any member may call. Runs the split engine against the\nevent's members, items, and rules and returns the whole\nbreakdown. Amounts are in cents.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "shares"
+                ],
+                "summary": "Compute per-member and per-detail shares for an event",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/events.sharesResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/events/{id}/tags/conds": {
             "get": {
                 "produces": [
@@ -1591,6 +1632,65 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/events/{id}/transfers": {
+            "get": {
+                "description": "Any member may call. mode=min (default) greedy-matches\ndebtors to creditors. mode=hub routes every non-zero net\nthrough hub (a member id passed as ?hub=).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "shares"
+                ],
+                "summary": "List settlement transfers for an event",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "min or hub",
+                        "name": "mode",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "member id when mode=hub",
+                        "name": "hub",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/events.transfersResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/events.errorResponse"
                         }
@@ -1993,6 +2093,27 @@ const docTemplate = `{
                 }
             }
         },
+        "events.detailShareDTO": {
+            "type": "object",
+            "properties": {
+                "amount_cents": {
+                    "type": "integer"
+                },
+                "detail_id": {
+                    "type": "integer"
+                },
+                "item_id": {
+                    "type": "integer"
+                },
+                "shares": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                }
+            }
+        },
         "events.errorResponse": {
             "type": "object",
             "properties": {
@@ -2204,6 +2325,23 @@ const docTemplate = `{
                 }
             }
         },
+        "events.memberShareDTO": {
+            "type": "object",
+            "properties": {
+                "member_id": {
+                    "type": "integer"
+                },
+                "net_cents": {
+                    "type": "integer"
+                },
+                "owed_cents": {
+                    "type": "integer"
+                },
+                "paid_cents": {
+                    "type": "integer"
+                }
+            }
+        },
         "events.membersResponse": {
             "type": "object",
             "properties": {
@@ -2293,6 +2431,26 @@ const docTemplate = `{
                 }
             }
         },
+        "events.sharesResponse": {
+            "type": "object",
+            "properties": {
+                "grand_total_cents": {
+                    "type": "integer"
+                },
+                "per_detail": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/events.detailShareDTO"
+                    }
+                },
+                "per_member": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/events.memberShareDTO"
+                    }
+                }
+            }
+        },
         "events.templateItem": {
             "type": "object",
             "properties": {
@@ -2314,6 +2472,37 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/events.templateItem"
+                    }
+                }
+            }
+        },
+        "events.transferDTO": {
+            "type": "object",
+            "properties": {
+                "amount_cents": {
+                    "type": "integer"
+                },
+                "from_id": {
+                    "type": "integer"
+                },
+                "to_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "events.transfersResponse": {
+            "type": "object",
+            "properties": {
+                "hub_id": {
+                    "type": "integer"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "transfers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/events.transferDTO"
                     }
                 }
             }
