@@ -15,6 +15,58 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/auth/google": {
+            "post": {
+                "description": "Validate the ID token the frontend obtained from Google\nSign-In, then create or link the host account for that Google\nidentity and set a session cookie. Returns 503 when the server\nhas no GOOGLE_CLIENT_ID configured.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Sign in a host with a Google ID token",
+                "parameters": [
+                    {
+                        "description": "Google ID token",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.googleLoginRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.accountResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/auth.errorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/auth.errorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/auth.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/join": {
             "post": {
                 "description": "Look up the invite code, create a guest identity if the\nemail + phone combination is new, attach the guest to the\nevent as a participant, and set a session cookie. The\ninvite code is only accepted while the event is not settled.",
@@ -1820,6 +1872,18 @@ const docTemplate = `{
             "properties": {
                 "error": {
                     "type": "string"
+                }
+            }
+        },
+        "auth.googleLoginRequest": {
+            "type": "object",
+            "required": [
+                "id_token"
+            ],
+            "properties": {
+                "id_token": {
+                    "type": "string",
+                    "minLength": 1
                 }
             }
         },

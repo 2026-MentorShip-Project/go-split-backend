@@ -15,16 +15,21 @@ import (
 // Handler bundles the auth endpoints with the database pool they need.
 type Handler struct {
 	DB *pgxpool.Pool
+	// Google verifies Google ID tokens for POST /auth/google; nil disables it.
+	Google GoogleVerifier
 }
 
-// New returns a Handler bound to the given pool.
-func New(db *pgxpool.Pool) *Handler { return &Handler{DB: db} }
+// New returns a Handler bound to the given pool and Google verifier.
+func New(db *pgxpool.Pool, google GoogleVerifier) *Handler {
+	return &Handler{DB: db, Google: google}
+}
 
 // Register wires every /auth/* endpoint onto the given router.
 func (h *Handler) Register(r gin.IRouter) {
 	g := r.Group("/auth")
 	g.POST("/register", h.PostRegister)
 	g.POST("/login", h.PostLogin)
+	g.POST("/google", h.PostGoogle)
 	h.registerGuestRoutes(g)
 }
 
@@ -147,7 +152,7 @@ type hostRow struct {
 func loadHostByEmail(ctx context.Context, db *pgxpool.Pool, email string) (hostRow, error) {
 	var h hostRow
 	err := db.QueryRow(ctx,
-		`SELECT id, name, email, password_hash FROM hosts WHERE email = $1`, email).
+		`SELECT id, name, email, COALESCE(password_hash, '') FROM hosts WHERE email = $1`, email).
 		Scan(&h.id, &h.name, &h.email, &h.passwordHash)
 	return h, err
 }

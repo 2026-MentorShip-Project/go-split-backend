@@ -1,14 +1,8 @@
-
-DOCKER_DEV_REPO := asia-docker.pkg.dev/appier-docker/docker-ai-rec-asia/go-split-backend-dev
-DOCKER_TAG := $(DEV_NAME) 
-
-CHART_DIR := ./deploy/go-split-backend
-RELEASE_NAME := go-split-backend-dev-$(DEV_NAME)
-
-DEV_CLUSTER := gke_appier-k8s-ai-rec_asia-east1_nelson
-DEV_NAMESPACE := rec
-
 REQ_EXECUTABLES := helm kubectl vault consul-template kubectx
+
+PROJECT_ID := project-4ddffd8b-3b42-486b-b6a
+REGION := asia-east1
+DB_NAME := go-split-postgres
 
 
 .PHONY: install-tool
@@ -61,3 +55,12 @@ lint-check:
 .PHONY: pre-commit-check
 pre-commit-check: fmt-check lint-check generate test
 	@echo "Success! All checks (Fmt/Lint/Test) passed"
+
+
+####################### DB ##################
+# needs to download cloud-sql-proxy first
+# check https://docs.cloud.google.com/sql/docs/mysql/sql-proxy for more details
+.PHONY: connect-cloud-sql
+connect-cloud-sql:
+	@echo "==> Connecting to Cloud SQL..."
+	./cloud-sql-proxy --port 5432 $(PROJECT_ID):$(REGION):$(DB_NAME)

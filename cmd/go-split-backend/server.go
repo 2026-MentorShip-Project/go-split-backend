@@ -51,7 +51,7 @@ func main() {
 	r.GET("/healthz", controller.HealthCheck)
 	r.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
 
-	auth.New(db).Register(r)
+	auth.New(db, auth.NewGoogleVerifier(os.Getenv("GOOGLE_CLIENT_ID"))).Register(r)
 	events.New(db).Register(r)
 	s := &http.Server{
 		Addr:    ":8080",

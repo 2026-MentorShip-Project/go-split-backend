@@ -107,6 +107,21 @@ resource "google_secret_manager_secret_version" "db_password" {
   secret_data = var.db_password
 }
 
+resource "google_secret_manager_secret" "google_client_id" {
+  secret_id = "go-split-google-client-id"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.secretmanager_api]
+}
+
+resource "google_secret_manager_secret_version" "google_client_id" {
+  secret      = google_secret_manager_secret.google_client_id.id
+  secret_data = var.google_client_id
+}
+
 # ------------------------------------------------------------------------------
 # Service Account for Cloud Run Runtime
 # ------------------------------------------------------------------------------
@@ -123,6 +138,12 @@ resource "google_project_iam_member" "cloud_run_sql_client" {
 
 resource "google_secret_manager_secret_iam_member" "cloud_run_db_password_accessor" {
   secret_id = google_secret_manager_secret.db_password.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.go_backend_sa.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "cloud_run_google_client_id_accessor" {
+  secret_id = google_secret_manager_secret.google_client_id.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.go_backend_sa.email}"
 }
@@ -165,6 +186,16 @@ resource "google_cloud_run_v2_service" "go_backend" {
       env {
         name  = "APP_ENV"
         value = "production"
+      }
+
+      env {
+        name = "GOOGLE_CLIENT_ID"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.google_client_id.secret_id
+            version = "latest"
+          }
+        }
       }
 
       env {
@@ -216,7 +247,7 @@ resource "google_cloud_run_v2_service" "go_backend" {
     ]
   }
 
-  depends_on = [google_project_service.run_api, google_project_iam_member.cloud_run_sql_client, google_secret_manager_secret_iam_member.cloud_run_db_password_accessor]
+  depends_on = [google_project_service.run_api, google_project_iam_member.cloud_run_sql_client, google_secret_manager_secret_iam_member.cloud_run_db_password_accessor, google_secret_manager_secret_iam_member.cloud_run_google_client_id_accessor]
 }
 
 # ------------------------------------------------------------------------------
