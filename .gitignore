@@ -25,7 +25,8 @@ target/
 dist/
 
 # VScode IDE
-.vscode/
+.vscode/*
+!.vscode/launch.json
 
 # JetBrains IDE
 .idea/

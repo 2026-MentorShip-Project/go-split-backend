@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug server",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/cmd/go-split-backend",
+      "env": {
+        "DB_HOST": "127.0.0.1",
+        "DB_PORT": "5432",
+        "DB_USER": "go_split",
+        "DB_PASSWORD": "go_split",
+        "DB_NAME": "go_split",
+        "ALLOWED_ORIGINS": "http://localhost:3000"
+      }
+    }
+  ]
+}
