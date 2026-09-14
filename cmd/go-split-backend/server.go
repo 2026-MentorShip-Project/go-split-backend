@@ -50,7 +50,7 @@ func main() {
 	r.Use(httpx.CORS())
 	r.Use(gin.RecoveryWithWriter(io.Discard, jsonRecoveryHandler))
 
-	r.GET("/healthz", controller.HealthCheck)
+	r.GET("/healthz", controller.HealthCheck(db))
 	r.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
 
 	auth.New(db, auth.NewGoogleVerifier(os.Getenv("GOOGLE_CLIENT_ID"))).Register(r)
