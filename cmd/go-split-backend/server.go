@@ -16,6 +16,7 @@ import (
 	"go-split-backend/internal/controller"
 	"go-split-backend/internal/database"
 	"go-split-backend/internal/events"
+	"go-split-backend/internal/httpx"
 
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
@@ -46,6 +47,7 @@ func main() {
 
 	r := gin.New()
 
+	r.Use(httpx.CORS())
 	r.Use(gin.RecoveryWithWriter(io.Discard, jsonRecoveryHandler))
 
 	r.GET("/healthz", controller.HealthCheck)

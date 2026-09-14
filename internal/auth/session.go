@@ -114,7 +114,7 @@ func setCookie(c *gin.Context, token string, expires time.Time) {
 		MaxAge:   int(time.Until(expires).Seconds()),
 		HttpOnly: true,
 		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteNoneMode,
 	})
 }
 
@@ -126,6 +126,6 @@ func clearCookie(c *gin.Context) {
 		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteNoneMode,
 	})
 }
