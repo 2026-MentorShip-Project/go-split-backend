@@ -24,3 +24,9 @@ variable "db_password" {
   description = "Password for the application PostgreSQL user"
   sensitive   = true
 }
+
+variable "google_client_id" {
+  type        = string
+  description = "OAuth client ID that Google ID tokens must be issued for; empty disables Google sign-in"
+  default     = ""
+}

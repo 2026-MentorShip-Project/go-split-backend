@@ -168,6 +168,11 @@ resource "google_cloud_run_v2_service" "go_backend" {
       }
 
       env {
+        name  = "GOOGLE_CLIENT_ID"
+        value = var.google_client_id
+      }
+
+      env {
         name  = "DB_HOST"
         value = "/cloudsql/${google_sql_database_instance.postgres.connection_name}"
       }

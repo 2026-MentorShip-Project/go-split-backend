@@ -38,6 +38,13 @@ make install-tool
 go mod download
 ```
 
+### Configuration
+
+The server reads `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME`
+for Postgres. Set `GOOGLE_CLIENT_ID` to the OAuth client ID your frontend uses
+for Google Sign-In to enable `POST /auth/google`; when it is unset that
+endpoint answers 503.
+
 ### Run pre-commit check
 
 ```shell
