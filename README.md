@@ -45,6 +45,21 @@ for Postgres. Set `GOOGLE_CLIENT_ID` to the OAuth client ID your frontend uses
 for Google Sign-In to enable `POST /auth/google`; when it is unset that
 endpoint answers 503.
 
+
+### Run locally
+
+Bring up Postgres in Docker, then run the server (or launch it via the
+VSCode "Debug server" configuration for breakpoints):
+
+```shell
+docker compose up -d db
+DB_HOST=127.0.0.1 DB_PORT=5432 DB_USER=go_split DB_PASSWORD=go_split \
+    DB_NAME=go_split go run ./cmd/go-split-backend
+```
+
+Migrations and template seeds run on startup, so a fresh compose volume is
+usable immediately.
+
 ### Run pre-commit check
 
 ```shell
