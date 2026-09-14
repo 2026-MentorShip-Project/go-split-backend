@@ -64,3 +64,8 @@ pre-commit-check: fmt-check lint-check generate test
 connect-cloud-sql:
 	@echo "==> Connecting to Cloud SQL..."
 	./cloud-sql-proxy --port 5432 $(PROJECT_ID):$(REGION):$(DB_NAME)
+
+.PHONY: swag
+swag:
+	@echo "==> Regenerating swagger docs..."
+	@cd cmd/go-split-backend && swag init -d ../../ -g cmd/go-split-backend/server.go -o ../../docs

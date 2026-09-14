@@ -532,6 +532,50 @@ const docTemplate = `{
                 }
             }
         },
+        "/events/{id}/archive": {
+            "post": {
+                "description": "Host-only. Flips archived=true; the event and every child\nrow becomes read-only. Requires the event to already be\nsettled. Idempotent on an already-archived event.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settlement"
+                ],
+                "summary": "Archive a settled event",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/events/{id}/items": {
             "get": {
                 "description": "Any member may call. Cards ordered newest first, details\nwithin a card ordered by ordinal.",
@@ -1811,9 +1855,135 @@ const docTemplate = `{
                 }
             }
         },
+        "/events/{id}/transfers/{from}/{to}/paid": {
+            "put": {
+                "description": "Host or co-organizer. The event must be settled; before\nsettle the transfer set is not stable and paid state has no\nmeaning. Idempotent.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settlement"
+                ],
+                "summary": "Mark a transfer as paid",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "From member id",
+                        "name": "from",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "To member id",
+                        "name": "to",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Host or co-organizer. Requires settled. Idempotent.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settlement"
+                ],
+                "summary": "Undo a transfer's paid mark",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "From member id",
+                        "name": "from",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "To member id",
+                        "name": "to",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/healthz": {
             "get": {
-                "description": "Usage for checking service liveness",
+                "description": "Pings the database pool with a 1s timeout. Returns 503 when\nthe pool is not reachable so Cloud Run stops routing traffic.",
                 "produces": [
                     "application/json"
                 ],
@@ -1821,6 +1991,9 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "ok"
+                    },
+                    "503": {
+                        "description": "database unavailable"
                     }
                 }
             }
@@ -2649,6 +2822,9 @@ const docTemplate = `{
                 },
                 "from_id": {
                     "type": "integer"
+                },
+                "paid": {
+                    "type": "boolean"
                 },
                 "to_id": {
                     "type": "integer"
