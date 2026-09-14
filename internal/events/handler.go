@@ -30,6 +30,7 @@ func (h *Handler) Register(r gin.IRouter) {
 	h.registerItemRoutes(g)
 	h.registerSettingsRoutes(g)
 	h.registerSharesRoutes(g)
+	h.registerSettlementRoutes(g)
 
 	h.registerTemplateRoutes(r)
 }

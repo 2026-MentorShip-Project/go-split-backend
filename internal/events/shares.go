@@ -44,6 +44,7 @@ type transferDTO struct {
 	FromID      int64 `json:"from_id"`
 	ToID        int64 `json:"to_id"`
 	AmountCents int64 `json:"amount_cents"`
+	Paid        bool  `json:"paid"`
 }
 
 type transfersResponse struct {
@@ -120,9 +121,17 @@ func (h *Handler) GetTransfers(c *gin.Context) {
 	} else {
 		raw = splitengine.Transfers(result.Shares)
 	}
+	paid, err := loadPaidPairs(c.Request.Context(), h.DB, eventID)
+	if err != nil {
+		respondErr(c, http.StatusInternalServerError, "load paid transfers")
+		return
+	}
 	out := transfersResponse{Mode: mode, HubID: hubID, Transfers: make([]transferDTO, 0, len(raw))}
 	for _, t := range raw {
-		out.Transfers = append(out.Transfers, transferDTO{FromID: t.FromID, ToID: t.ToID, AmountCents: t.AmountCents})
+		out.Transfers = append(out.Transfers, transferDTO{
+			FromID: t.FromID, ToID: t.ToID, AmountCents: t.AmountCents,
+			Paid: paid[transferKey(t.FromID, t.ToID)],
+		})
 	}
 	c.JSON(http.StatusOK, out)
 }
