@@ -83,9 +83,18 @@ func (v *googleTokenInfoVerifier) Verify(ctx context.Context, idToken string) (G
 
 	resp, err := v.client.Do(req)
 	if err != nil {
+		// net/http wraps transport failures with the request URL, which
+		// contains the ID token. Keep the cause without logging that URL.
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			err = urlErr.Err
+		}
 		return GoogleIdentity{}, fmt.Errorf("call tokeninfo: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusBadRequest {
+		return GoogleIdentity{}, fmt.Errorf("tokeninfo returned %d", resp.StatusCode)
+	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 	if err != nil {
@@ -93,7 +102,7 @@ func (v *googleTokenInfoVerifier) Verify(ctx context.Context, idToken string) (G
 	}
 	var info tokenInfo
 	if err := json.Unmarshal(body, &info); err != nil {
-		return GoogleIdentity{}, fmt.Errorf("decode tokeninfo response: %w", err)
+		return GoogleIdentity{}, fmt.Errorf("decode tokeninfo response (status=%d, content-type=%q): %w", resp.StatusCode, resp.Header.Get("Content-Type"), err)
 	}
 	switch {
 	case resp.StatusCode == http.StatusBadRequest:

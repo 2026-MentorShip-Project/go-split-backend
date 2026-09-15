@@ -98,6 +98,32 @@ func TestNewGoogleVerifierDisabledWithoutClientID(t *testing.T) {
 	}
 }
 
+func TestGoogleVerifierPreservesNonJSONUpstreamStatus(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+	}))
+	defer s.Close()
+	v := newGoogleVerifier(testClientID, s.URL)
+	_, err := v.Verify(t.Context(), "token")
+	if err == nil || !strings.Contains(err.Error(), "503") || errors.Is(err, ErrInvalidGoogleToken) {
+		t.Fatalf("Verify error = %v; want upstream status 503", err)
+	}
+}
+
+func TestGoogleVerifierTransportErrorOmitsToken(t *testing.T) {
+	v := newGoogleVerifier(testClientID, "https://example.invalid")
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	const token = "secret-google-id-token"
+	_, err := v.Verify(ctx, token)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Verify error = %v; want context cancellation", err)
+	}
+	if strings.Contains(err.Error(), token) || strings.Contains(err.Error(), "id_token=") {
+		t.Fatal("transport error exposes ID token")
+	}
+}
+
 type stubVerifier struct {
 	err error
 }

@@ -19,6 +19,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./bin/server.app ./cmd/go-
 
 FROM scratch
 WORKDIR /srv
+COPY --from=build-env /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build-env /go-split-backend/bin/server.app /srv
 EXPOSE 8080
 ENTRYPOINT ["/srv/server.app"]

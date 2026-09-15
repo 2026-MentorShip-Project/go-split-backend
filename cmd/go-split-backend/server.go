@@ -29,7 +29,7 @@ import (
 // @title go-split-backend service
 // @version 1.0
 // @basePath /
-// @schemes https
+// @schemes http https
 //
 //go:generate swag init -d ../../ -g cmd/go-split-backend/server.go -o ../../docs
 
