@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	log "github.com/sirupsen/logrus"
 )
 
 // GoogleTokenInfoURL is Google's ID-token introspection endpoint.
@@ -154,19 +155,23 @@ func (h *Handler) PostGoogle(c *gin.Context) {
 	identity, err := h.Google.Verify(ctx, req.IDToken)
 	if err != nil {
 		if errors.Is(err, ErrInvalidGoogleToken) {
+			log.WithContext(ctx).WithError(err).Info("reject google token")
 			respondErr(c, http.StatusUnauthorized, "invalid google token")
 			return
 		}
+		log.WithContext(ctx).WithError(err).Warn("verify google token upstream failure")
 		respondErr(c, http.StatusBadGateway, "verify google token")
 		return
 	}
 
 	host, err := upsertGoogleHost(ctx, h.DB, identity)
 	if err != nil {
+		log.WithContext(ctx).WithError(err).WithField("google_sub", identity.Sub).Error("upsert google host")
 		respondErr(c, http.StatusInternalServerError, "create host")
 		return
 	}
 	if _, err := IssueSession(ctx, h.DB, c, Subject{HostID: host.id}); err != nil {
+		log.WithContext(ctx).WithError(err).WithField("host_id", host.id).Error("issue google session")
 		respondErr(c, http.StatusInternalServerError, "issue session")
 		return
 	}
