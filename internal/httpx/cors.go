@@ -13,11 +13,12 @@ const defaultAllowedOrigins = "http://localhost:3000"
 // CORS returns a middleware that echoes the request's Origin when it is in
 // ALLOWED_ORIGINS (comma-separated, default http://localhost:3000). Sends
 // credentialed CORS so the session cookie can ride cross-origin.
+// Set ALLOWED_ORIGINS=* to allow any origin for temporary local testing.
 func CORS() gin.HandlerFunc {
 	allowed := parseOrigins(os.Getenv("ALLOWED_ORIGINS"))
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
-		if origin != "" && allowed[origin] {
+		if origin != "" && (allowed[origin] || allowed["*"]) {
 			h := c.Writer.Header()
 			h.Set("Access-Control-Allow-Origin", origin)
 			h.Set("Access-Control-Allow-Credentials", "true")

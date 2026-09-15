@@ -4,6 +4,7 @@ PROJECT_ID := project-4ddffd8b-3b42-486b-b6a
 REGION := asia-east1
 DB_NAME := go-split-postgres
 
+GOOGLE_CLIENT_ID ?=
 
 .PHONY: install-tool
 install-tool:
@@ -69,3 +70,18 @@ connect-cloud-sql:
 swag:
 	@echo "==> Regenerating swagger docs..."
 	@cd cmd/go-split-backend && swag init -d ../../ -g cmd/go-split-backend/server.go -o ../../docs
+
+
+####################### Local ##################
+.PHONY: serve-login
+serve-login:
+	@echo "==> Open http://localhost:3000/login.html"
+	python3 -m http.server 3000 --directory tests/e2e
+
+.PHONY: run-local
+run-local:
+	@echo "==> Running the local server..."
+	docker compose up -d db
+	DB_HOST=127.0.0.1 DB_PORT=5432 DB_USER=go_split DB_PASSWORD=go_split \
+	GOOGLE_CLIENT_ID=$(GOOGLE_CLIENT_ID) \
+	DB_NAME=go_split go run ./cmd/go-split-backend/server.go

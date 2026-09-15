@@ -2895,7 +2895,7 @@ var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
 	Host:             "",
 	BasePath:         "/",
-	Schemes:          []string{"https"},
+	Schemes:          []string{"http", "https"},
 	Title:            "go-split-backend service",
 	Description:      "",
 	InfoInstanceName: "swagger",

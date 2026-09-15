@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<div id="g_id_onload"
+     data-client_id="PASTE_CLIENT_ID_HERE"
+     data-callback="onSignIn"></div>
+<div class="g_id_signin" data-type="standard"></div>
+<pre id="out" style="white-space:pre-wrap;word-break:break-all;font:12px/1.4 monospace"></pre>
+<script>
+function onSignIn(r) {
+  document.getElementById('out').textContent = r.credential;
+  navigator.clipboard?.writeText(r.credential);
+}
+</script>

@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	log "github.com/sirupsen/logrus"
 )
 
 // GoogleTokenInfoURL is Google's ID-token introspection endpoint.
@@ -82,9 +83,18 @@ func (v *googleTokenInfoVerifier) Verify(ctx context.Context, idToken string) (G
 
 	resp, err := v.client.Do(req)
 	if err != nil {
+		// net/http wraps transport failures with the request URL, which
+		// contains the ID token. Keep the cause without logging that URL.
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			err = urlErr.Err
+		}
 		return GoogleIdentity{}, fmt.Errorf("call tokeninfo: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusBadRequest {
+		return GoogleIdentity{}, fmt.Errorf("tokeninfo returned %d", resp.StatusCode)
+	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 	if err != nil {
@@ -92,7 +102,7 @@ func (v *googleTokenInfoVerifier) Verify(ctx context.Context, idToken string) (G
 	}
 	var info tokenInfo
 	if err := json.Unmarshal(body, &info); err != nil {
-		return GoogleIdentity{}, fmt.Errorf("decode tokeninfo response: %w", err)
+		return GoogleIdentity{}, fmt.Errorf("decode tokeninfo response (status=%d, content-type=%q): %w", resp.StatusCode, resp.Header.Get("Content-Type"), err)
 	}
 	switch {
 	case resp.StatusCode == http.StatusBadRequest:
@@ -154,19 +164,23 @@ func (h *Handler) PostGoogle(c *gin.Context) {
 	identity, err := h.Google.Verify(ctx, req.IDToken)
 	if err != nil {
 		if errors.Is(err, ErrInvalidGoogleToken) {
+			log.WithContext(ctx).WithError(err).Info("reject google token")
 			respondErr(c, http.StatusUnauthorized, "invalid google token")
 			return
 		}
+		log.WithContext(ctx).WithError(err).Warn("verify google token upstream failure")
 		respondErr(c, http.StatusBadGateway, "verify google token")
 		return
 	}
 
 	host, err := upsertGoogleHost(ctx, h.DB, identity)
 	if err != nil {
+		log.WithContext(ctx).WithError(err).WithField("google_sub", identity.Sub).Error("upsert google host")
 		respondErr(c, http.StatusInternalServerError, "create host")
 		return
 	}
 	if _, err := IssueSession(ctx, h.DB, c, Subject{HostID: host.id}); err != nil {
+		log.WithContext(ctx).WithError(err).WithField("host_id", host.id).Error("issue google session")
 		respondErr(c, http.StatusInternalServerError, "issue session")
 		return
 	}
