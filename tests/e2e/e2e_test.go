@@ -141,3 +141,36 @@ func TestSmallLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestTemplateEventSettings(t *testing.T) {
+	s := testServer(t)
+	host := client(t, s)
+	account := map[string]string{"name": "Template host", "email": fmt.Sprintf("template-%d@example.com", time.Now().UnixNano()), "password": "ci-password-123"}
+	request(t, host, "POST", s.URL+"/auth/register", account, 201, nil)
+	var event struct {
+		ID int64 `json:"id"`
+	}
+	request(t, host, "POST", s.URL+"/events", map[string]string{"name": "Template event", "template": "烤肉/露營模板"}, 201, &event)
+	for _, catalog := range []struct {
+		path, label string
+		count       int
+	}{{"items", "肉品", 16}, {"conds", "吃素", 8}} {
+		endpoint := fmt.Sprintf("%s/events/%d/tags/%s", s.URL, event.ID, catalog.path)
+		var result struct {
+			Labels []string `json:"labels"`
+		}
+		request(t, host, "GET", endpoint, nil, 200, &result)
+		if len(result.Labels) != catalog.count || result.Labels[0] != catalog.label {
+			t.Fatalf("unexpected %s: %v", catalog.path, result.Labels)
+		}
+		request(t, host, "POST", endpoint, map[string]string{"label": catalog.label}, 409, nil)
+	}
+	var result struct {
+		Rules []json.RawMessage `json:"rules"`
+	}
+	request(t, host, "GET", fmt.Sprintf("%s/events/%d/rules", s.URL, event.ID), nil, 200, &result)
+	if len(result.Rules) != 6 {
+		t.Fatalf("expected 6 rules, got %d", len(result.Rules))
+	}
+	request(t, host, "POST", s.URL+"/events", map[string]string{"name": "Unavailable template", "template": "聚餐模板"}, 400, nil)
+}

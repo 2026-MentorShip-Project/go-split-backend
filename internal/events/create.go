@@ -15,9 +15,10 @@ import (
 	"go-split-backend/internal/auth"
 )
 
-// allowedTemplates is the fixed list from data.js. Only the two "real" ones
-// have designed rule content today, but every label is accepted so the
-// frontend does not have to filter.
+var errTemplateUnavailable = errors.New("template not available")
+
+// allowedTemplates includes frontend placeholders; non-custom templates must
+// also have seeded content before an event can use them.
 var allowedTemplates = map[string]bool{
 	"自訂":      true,
 	"烤肉/露營模板": true,
@@ -54,7 +55,9 @@ type createEventResponse struct {
 // PostEvent godoc
 // @Summary     Create a new event
 // @Description Host-only. Persists the event, adds the host to event_members
-// @Description with role 'host', and issues an invite code atomically. The
+// @Description with role 'host', and issues an invite code atomically.
+// @Description Selected template tags and rules are applied in the same transaction.
+// @Description Custom events start with empty settings. The
 // @Description response carries the code so the client can jump straight to
 // @Description the invite screen without a second round-trip.
 // @Tags        events
@@ -94,6 +97,10 @@ func (h *Handler) PostEvent(c *gin.Context) {
 	ctx := c.Request.Context()
 	out, err := createEventTx(ctx, h.DB, sub.HostID, req)
 	if err != nil {
+		if errors.Is(err, errTemplateUnavailable) {
+			respondErr(c, http.StatusBadRequest, "template not available")
+			return
+		}
 		respondErr(c, http.StatusInternalServerError, "create event")
 		return
 	}
@@ -101,7 +108,7 @@ func (h *Handler) PostEvent(c *gin.Context) {
 }
 
 // createEventTx runs the whole insert in one transaction so the event, the
-// host membership row, and the invite code are visible together or not at
+// host membership row, template settings, and invite code are visible together or not at
 // all.
 func createEventTx(ctx context.Context, db *pgxpool.Pool, hostID int64, req createEventRequest) (createEventResponse, error) {
 	tx, err := db.Begin(ctx)
@@ -109,6 +116,17 @@ func createEventTx(ctx context.Context, db *pgxpool.Pool, hostID int64, req crea
 		return createEventResponse{}, fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+
+	var content templateContent
+	if req.Template != "自訂" {
+		content, err = loadTemplateContent(ctx, tx, req.Template)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return createEventResponse{}, errTemplateUnavailable
+		}
+		if err != nil {
+			return createEventResponse{}, fmt.Errorf("load template: %w", err)
+		}
+	}
 
 	var eventID int64
 	err = tx.QueryRow(ctx, `
@@ -119,6 +137,10 @@ func createEventTx(ctx context.Context, db *pgxpool.Pool, hostID int64, req crea
 	).Scan(&eventID)
 	if err != nil {
 		return createEventResponse{}, fmt.Errorf("insert event: %w", err)
+	}
+
+	if err := replaceEventSettingsTx(ctx, tx, eventID, content); err != nil {
+		return createEventResponse{}, fmt.Errorf("apply template: %w", err)
 	}
 
 	display, err := lookupHostName(ctx, tx, hostID)
