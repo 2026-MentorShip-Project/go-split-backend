@@ -44,3 +44,9 @@ func TestSubjectExactlyOne(t *testing.T) {
 		})
 	}
 }
+
+func TestJoinDisplayNameDefaultsWhenOmitted(t *testing.T) {
+	if got := joinDisplayName(""); got != "Guest" {
+		t.Fatalf("joinDisplayName(\"\") = %q, want %q", got, "Guest")
+	}
+}

@@ -23,7 +23,7 @@ type joinRequest struct {
 	Code  string `json:"code"  binding:"required,min=1,max=32"`
 	Email string `json:"email" binding:"required,email"`
 	Phone string `json:"phone" binding:"required,min=1,max=32"`
-	Name  string `json:"name"  binding:"required,min=1,max=64"`
+	Name  string `json:"name"  binding:"omitempty,max=64"`
 }
 
 type joinResponse struct {
@@ -56,6 +56,7 @@ func (h *Handler) PostJoin(c *gin.Context) {
 	req.Code = strings.TrimSpace(req.Code)
 	req.Email = strings.TrimSpace(req.Email)
 	req.Phone = strings.TrimSpace(req.Phone)
+	req.Name = joinDisplayName(strings.TrimSpace(req.Name))
 
 	ctx := c.Request.Context()
 	eventID, settled, err := lookupInvite(ctx, h.DB, req.Code)
@@ -203,6 +204,13 @@ func upsertGuest(ctx context.Context, db *pgxpool.Pool, email, phone, name strin
 		ON CONFLICT (email, phone) DO UPDATE SET name = EXCLUDED.name
 		RETURNING id`, email, phone, name).Scan(&id)
 	return id, err
+}
+
+func joinDisplayName(name string) string {
+	if name == "" {
+		return "Guest"
+	}
+	return name
 }
 
 // attachGuestToEvent inserts a membership row if one does not exist for this
