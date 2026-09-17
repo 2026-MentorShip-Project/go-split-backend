@@ -78,9 +78,9 @@ func (h *Handler) GetEvents(c *gin.Context) {
 // queryEventsForSubject returns every event the subject participates in,
 // with the subject's role in each event and the event's member count.
 func queryEventsForSubject(ctx context.Context, db *pgxpool.Pool, sub auth.Subject) ([]eventListItem, error) {
-	// A host's role in an event they own is always 'host'; membership rows
-	// exist for guests and for hosts joining someone else's event. The
-	// UNION covers both cases and deduplicates a host who also appears in
+	// An account's role in an event they own is always 'host'; membership rows
+	// exist for guests and for accounts joining someone else's event. The
+	// UNION covers both cases and deduplicates an account who also appears in
 	// event_members for their own event (should not happen, but harmless).
 	const q = `
 		SELECT e.id, e.name, e.place, e.starts_at, e.ends_at, e.template,
@@ -88,7 +88,7 @@ func queryEventsForSubject(ctx context.Context, db *pgxpool.Pool, sub auth.Subje
 		       (SELECT COUNT(*) FROM event_members WHERE event_id = e.id) AS member_count,
 		       e.settled, e.archived, e.created_at
 		  FROM events e
-		 WHERE $1 <> 0 AND e.host_id = $1
+		 WHERE $1 <> 0 AND e.account_id = $1
 
 		UNION
 
@@ -98,12 +98,12 @@ func queryEventsForSubject(ctx context.Context, db *pgxpool.Pool, sub auth.Subje
 		       e.settled, e.archived, e.created_at
 		  FROM events e
 		  JOIN event_members em ON em.event_id = e.id
-		 WHERE ($1 <> 0 AND em.host_id  = $1)
+		 WHERE ($1 <> 0 AND em.account_id  = $1)
 		    OR ($2 <> 0 AND em.guest_id = $2)
 
 		 ORDER BY 11 DESC`
 
-	rows, err := db.Query(ctx, q, sub.HostID, sub.GuestID)
+	rows, err := db.Query(ctx, q, sub.AccountID, sub.GuestID)
 	if err != nil {
 		return nil, err
 	}

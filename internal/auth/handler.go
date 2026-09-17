@@ -46,14 +46,14 @@ type accountResponse struct {
 }
 
 // PostRegister godoc
-// @Summary     Register a host account
-// @Description Create a host account with name, email, and password. Sets a
-// @Description session cookie on success. Only hosts have accounts;
+// @Summary     Register an account
+// @Description Create an account with name, email, and password. Sets a
+// @Description session cookie on success. Accounts can create events;
 // @Description co-organizers and participants join through /auth/join.
 // @Tags        auth
 // @Accept      json
 // @Produce     json
-// @Param       body body     registerRequest true "Host registration"
+// @Param       body body     registerRequest true "Account registration"
 // @Success     201  {object} accountResponse
 // @Failure     400  {object} errorResponse
 // @Failure     409  {object} errorResponse
@@ -76,7 +76,7 @@ func (h *Handler) PostRegister(c *gin.Context) {
 	ctx := c.Request.Context()
 	var id int64
 	err = h.DB.QueryRow(ctx,
-		`INSERT INTO hosts (name, email, password_hash)
+		`INSERT INTO accounts (name, email, password_hash)
 		   VALUES ($1, $2, $3)
 		RETURNING id`, req.Name, req.Email, string(hash)).Scan(&id)
 	if err != nil {
@@ -84,11 +84,11 @@ func (h *Handler) PostRegister(c *gin.Context) {
 			respondErr(c, http.StatusConflict, "email already registered")
 			return
 		}
-		respondErr(c, http.StatusInternalServerError, "create host")
+		respondErr(c, http.StatusInternalServerError, "create account")
 		return
 	}
 
-	if _, err := IssueSession(ctx, h.DB, c, Subject{HostID: id}); err != nil {
+	if _, err := IssueSession(ctx, h.DB, c, Subject{AccountID: id}); err != nil {
 		respondErr(c, http.StatusInternalServerError, "issue session")
 		return
 	}
@@ -102,12 +102,12 @@ type loginRequest struct {
 }
 
 // PostLogin godoc
-// @Summary     Log in a host account
-// @Description Verify the host's email + password, then set a session cookie.
+// @Summary     Log in an account
+// @Description Verify the account's email + password, then set a session cookie.
 // @Tags        auth
 // @Accept      json
 // @Produce     json
-// @Param       body body     loginRequest true "Host login"
+// @Param       body body     loginRequest true "Account login"
 // @Success     200  {object} accountResponse
 // @Failure     400  {object} errorResponse
 // @Failure     401  {object} errorResponse
@@ -121,38 +121,38 @@ func (h *Handler) PostLogin(c *gin.Context) {
 	req.Email = strings.TrimSpace(req.Email)
 
 	ctx := c.Request.Context()
-	host, err := loadHostByEmail(ctx, h.DB, req.Email)
+	account, err := loadAccountByEmail(ctx, h.DB, req.Email)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			respondErr(c, http.StatusUnauthorized, "invalid email or password")
 			return
 		}
-		respondErr(c, http.StatusInternalServerError, "load host")
+		respondErr(c, http.StatusInternalServerError, "load account")
 		return
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(host.passwordHash), []byte(req.Password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(account.passwordHash), []byte(req.Password)); err != nil {
 		respondErr(c, http.StatusUnauthorized, "invalid email or password")
 		return
 	}
 
-	if _, err := IssueSession(ctx, h.DB, c, Subject{HostID: host.id}); err != nil {
+	if _, err := IssueSession(ctx, h.DB, c, Subject{AccountID: account.id}); err != nil {
 		respondErr(c, http.StatusInternalServerError, "issue session")
 		return
 	}
-	c.JSON(http.StatusOK, accountResponse{ID: host.id, Name: host.name, Email: host.email})
+	c.JSON(http.StatusOK, accountResponse{ID: account.id, Name: account.name, Email: account.email})
 }
 
-type hostRow struct {
+type accountRow struct {
 	id           int64
 	name         string
 	email        string
 	passwordHash string
 }
 
-func loadHostByEmail(ctx context.Context, db *pgxpool.Pool, email string) (hostRow, error) {
-	var h hostRow
+func loadAccountByEmail(ctx context.Context, db *pgxpool.Pool, email string) (accountRow, error) {
+	var h accountRow
 	err := db.QueryRow(ctx,
-		`SELECT id, name, email, COALESCE(password_hash, '') FROM hosts WHERE email = $1`, email).
+		`SELECT id, name, email, COALESCE(password_hash, '') FROM accounts WHERE email = $1`, email).
 		Scan(&h.id, &h.name, &h.email, &h.passwordHash)
 	return h, err
 }

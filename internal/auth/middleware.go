@@ -58,7 +58,7 @@ func RequireEventRole(db *pgxpool.Pool, allowed ...string) gin.HandlerFunc {
 			return
 		}
 		sub := CurrentSubject(c)
-		if !sub.IsHost() && !sub.IsGuest() {
+		if !sub.IsAccount() && !sub.IsGuest() {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, errorResponse{Error: "not signed in"})
 			return
 		}
@@ -114,9 +114,9 @@ func lookupEventRole(ctx context.Context, db *pgxpool.Pool, eventID int64, sub S
 		SELECT id, role::text
 		  FROM event_members
 		 WHERE event_id = $1
-		   AND (($2 <> 0 AND host_id  = $2)
+		   AND (($2 <> 0 AND account_id  = $2)
 		     OR ($3 <> 0 AND guest_id = $3))
 		 LIMIT 1`,
-		eventID, sub.HostID, sub.GuestID).Scan(&memberID, &role)
+		eventID, sub.AccountID, sub.GuestID).Scan(&memberID, &role)
 	return memberID, role, err
 }

@@ -54,13 +54,13 @@ func (h *Handler) PostJoin(c *gin.Context) {
 	req.Code = strings.TrimSpace(req.Code)
 
 	sub := auth.CurrentSubject(c)
-	if !sub.IsHost() && !sub.IsGuest() {
+	if !sub.IsAccount() && !sub.IsGuest() {
 		respondErr(c, http.StatusUnauthorized, "not signed in")
 		return
 	}
 
 	ctx := c.Request.Context()
-	eventID, name, settled, hostOwnerID, err := lookupInvite(ctx, h.DB, req.Code)
+	eventID, name, settled, ownerAccountID, err := lookupInvite(ctx, h.DB, req.Code)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			respondErr(c, http.StatusNotFound, "invite code not found")
@@ -74,8 +74,8 @@ func (h *Handler) PostJoin(c *gin.Context) {
 		return
 	}
 
-	// A host who owns the event is already the host; nothing to insert.
-	if sub.IsHost() && sub.HostID == hostOwnerID {
+	// An account that owns the event is already the host; nothing to insert.
+	if sub.IsAccount() && sub.AccountID == ownerAccountID {
 		c.JSON(http.StatusOK, joinResponse{EventID: eventID, Name: name, Role: "host"})
 		return
 	}
@@ -90,48 +90,48 @@ func (h *Handler) PostJoin(c *gin.Context) {
 
 func lookupInvite(ctx context.Context, db *pgxpool.Pool, code string) (int64, string, bool, int64, error) {
 	var (
-		eventID     int64
-		name        string
-		settled     bool
-		hostOwnerID int64
+		eventID        int64
+		name           string
+		settled        bool
+		ownerAccountID int64
 	)
 	err := db.QueryRow(ctx, `
-		SELECT e.id, e.name, e.settled, e.host_id
+		SELECT e.id, e.name, e.settled, e.account_id
 		  FROM invitations i
 		  JOIN events      e ON e.id = i.event_id
-		 WHERE i.code = $1`, code).Scan(&eventID, &name, &settled, &hostOwnerID)
-	return eventID, name, settled, hostOwnerID, err
+		 WHERE i.code = $1`, code).Scan(&eventID, &name, &settled, &ownerAccountID)
+	return eventID, name, settled, ownerAccountID, err
 }
 
 func attachToEvent(ctx context.Context, db *pgxpool.Pool, eventID int64, sub auth.Subject, display string) (string, error) {
-	var hostID, guestID any
+	var accountID, guestID any
 	var conflict string
 	switch {
-	case sub.IsHost():
-		hostID = sub.HostID
-		conflict = "(event_id, host_id)"
+	case sub.IsAccount():
+		accountID = sub.AccountID
+		conflict = "(event_id, account_id)"
 	case sub.IsGuest():
 		guestID = sub.GuestID
 		conflict = "(event_id, guest_id)"
 	default:
-		return "", errors.New("subject has neither host nor guest id")
+		return "", errors.New("subject has neither account nor guest id")
 	}
 
 	var role string
 	err := db.QueryRow(ctx, `
-		INSERT INTO event_members (event_id, host_id, guest_id, display, role)
+		INSERT INTO event_members (event_id, account_id, guest_id, display, role)
 		VALUES ($1, $2, $3, $4, 'member')
 		ON CONFLICT `+conflict+` DO UPDATE SET display = event_members.display
-		RETURNING role::text`, eventID, hostID, guestID, display).Scan(&role)
+		RETURNING role::text`, eventID, accountID, guestID, display).Scan(&role)
 	return role, err
 }
 
-// displayNameFor is a placeholder that will be replaced when host/guest name
+// displayNameFor is a placeholder that will be replaced when account/guest name
 // lookups land. For now it labels the row by subject type so QA can see
 // which side attached.
 func displayNameFor(sub auth.Subject) string {
-	if sub.IsHost() {
-		return "host"
+	if sub.IsAccount() {
+		return "account"
 	}
 	return "guest"
 }

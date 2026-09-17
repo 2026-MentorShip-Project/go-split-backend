@@ -135,9 +135,9 @@ type googleLoginRequest struct {
 }
 
 // PostGoogle godoc
-// @Summary     Sign in a host with a Google ID token
+// @Summary     Sign in an account with a Google ID token
 // @Description Validate the ID token the frontend obtained from Google
-// @Description Sign-In, then create or link the host account for that Google
+// @Description Sign-In, then create or link the account for that Google
 // @Description identity and set a session cookie. Returns 503 when the server
 // @Description has no GOOGLE_CLIENT_ID configured.
 // @Tags        auth
@@ -173,44 +173,44 @@ func (h *Handler) PostGoogle(c *gin.Context) {
 		return
 	}
 
-	host, err := upsertGoogleHost(ctx, h.DB, identity)
+	account, err := upsertGoogleAccount(ctx, h.DB, identity)
 	if err != nil {
-		log.WithContext(ctx).WithError(err).WithField("google_sub", identity.Sub).Error("upsert google host")
-		respondErr(c, http.StatusInternalServerError, "create host")
+		log.WithContext(ctx).WithError(err).WithField("google_sub", identity.Sub).Error("upsert google account")
+		respondErr(c, http.StatusInternalServerError, "create account")
 		return
 	}
-	if _, err := IssueSession(ctx, h.DB, c, Subject{HostID: host.id}); err != nil {
-		log.WithContext(ctx).WithError(err).WithField("host_id", host.id).Error("issue google session")
+	if _, err := IssueSession(ctx, h.DB, c, Subject{AccountID: account.id}); err != nil {
+		log.WithContext(ctx).WithError(err).WithField("account_id", account.id).Error("issue google session")
 		respondErr(c, http.StatusInternalServerError, "issue session")
 		return
 	}
-	c.JSON(http.StatusOK, accountResponse{ID: host.id, Name: host.name, Email: host.email})
+	c.JSON(http.StatusOK, accountResponse{ID: account.id, Name: account.name, Email: account.email})
 }
 
-// upsertGoogleHost finds the host by Google subject, otherwise links the
-// Google identity to an existing host with the same email, otherwise creates
-// a password-less host.
-func upsertGoogleHost(ctx context.Context, db *pgxpool.Pool, id GoogleIdentity) (hostRow, error) {
-	var h hostRow
+// upsertGoogleAccount finds the account by Google subject, otherwise links the
+// Google identity to an existing account with the same email, otherwise creates
+// a password-less account.
+func upsertGoogleAccount(ctx context.Context, db *pgxpool.Pool, id GoogleIdentity) (accountRow, error) {
+	var h accountRow
 	err := db.QueryRow(ctx,
-		`SELECT id, name, email FROM hosts WHERE google_sub = $1`, id.Sub).
+		`SELECT id, name, email FROM accounts WHERE google_sub = $1`, id.Sub).
 		Scan(&h.id, &h.name, &h.email)
 	if err == nil {
 		return h, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return hostRow{}, err
+		return accountRow{}, err
 	}
 
 	err = db.QueryRow(ctx,
-		`UPDATE hosts SET google_sub = $1 WHERE email = $2 AND google_sub IS NULL
+		`UPDATE accounts SET google_sub = $1 WHERE email = $2 AND google_sub IS NULL
 		 RETURNING id, name, email`, id.Sub, id.Email).
 		Scan(&h.id, &h.name, &h.email)
 	if err == nil {
 		return h, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return hostRow{}, err
+		return accountRow{}, err
 	}
 
 	name := id.Name
@@ -218,7 +218,7 @@ func upsertGoogleHost(ctx context.Context, db *pgxpool.Pool, id GoogleIdentity) 
 		name, _, _ = strings.Cut(id.Email, "@")
 	}
 	err = db.QueryRow(ctx,
-		`INSERT INTO hosts (name, email, google_sub) VALUES ($1, $2, $3)
+		`INSERT INTO accounts (name, email, google_sub) VALUES ($1, $2, $3)
 		 RETURNING id, name, email`, name, id.Email, id.Sub).
 		Scan(&h.id, &h.name, &h.email)
 	return h, err
