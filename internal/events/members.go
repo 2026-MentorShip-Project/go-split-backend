@@ -84,7 +84,7 @@ func (h *Handler) GetMembers(c *gin.Context) {
 
 type createMemberRequest struct {
 	Display string   `json:"display" binding:"required,min=1,max=64"`
-	Role    string   `json:"role"    binding:"required,oneof=host co member"`
+	Role    string   `json:"role"    binding:"required,oneof=co member"`
 	Tags    []string `json:"tags"`
 }
 
