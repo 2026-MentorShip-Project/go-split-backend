@@ -105,7 +105,7 @@ func loadMembers(ctx context.Context, db *pgxpool.Pool, eventID int64, sub auth.
 	rows, err := db.Query(ctx, `
 		SELECT id, display, role::text, tags,
 		       (guest_id IS NOT NULL) AS guest,
-		       (($1 <> 0 AND host_id  = $1) OR ($2 <> 0 AND guest_id = $2)) AS you
+		       COALESCE(($1 <> 0 AND host_id = $1) OR ($2 <> 0 AND guest_id = $2), false) AS you
 		  FROM event_members
 		 WHERE event_id = $3
 		 ORDER BY id`,
