@@ -306,7 +306,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Host-only. Persists the event, adds the host to event_members\nwith role 'host', and issues an invite code atomically. The\nresponse carries the code so the client can jump straight to\nthe invite screen without a second round-trip.",
+                "description": "Host-only. Persists the event, adds the host to event_members\nwith role 'host', and issues an invite code atomically.\nSelected template tags and rules are applied in the same transaction.\nCustom events start with empty settings. The\nresponse carries the code so the client can jump straight to\nthe invite screen without a second round-trip.",
                 "consumes": [
                     "application/json"
                 ],

@@ -19,7 +19,7 @@ In another terminal:
 
 ```sh
 export BASE_URL=http://127.0.0.1:8080
-go test -tags=e2e -count=1 -v ./tests/e2e -run '^TestEventJourney$'
+go test -tags=e2e -count=1 -v ./tests/e2e -run '^Test(EventJourney|TemplateEventSettings)$'
 # Requires k6 v1.6.1 on PATH.
 RUN_LOAD=1 go test -tags=e2e -count=1 -v ./tests/e2e -run '^TestSmallLoad$'
 ```
@@ -30,3 +30,10 @@ passing, and no dropped iterations. Account/event setup is outside measured
 traffic. These are initial CI regression limits, not production capacity claims.
 Results and server logs are retained for seven days, including on failure.
 Tests create unique accounts/events; discard the test database after use.
+
+Template transaction and database uniqueness checks require a disposable database:
+
+```sh
+TEST_DATABASE_URL="postgres://user:password@127.0.0.1:5432/test_db?sslmode=disable" \
+  go test -race -tags=integration -count=1 ./internal/events
+```

@@ -179,7 +179,11 @@ type templateRuleRaw struct {
 	Rest   json.RawMessage `json:"rest,omitempty"`
 }
 
-func loadTemplateContent(ctx context.Context, db *pgxpool.Pool, label string) (templateContent, error) {
+type templateQuerier interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func loadTemplateContent(ctx context.Context, db templateQuerier, label string) (templateContent, error) {
 	var body []byte
 	err := db.QueryRow(ctx,
 		`SELECT content::text FROM templates WHERE label = $1`, label).Scan(&body)
@@ -200,6 +204,13 @@ func replaceEventSettings(ctx context.Context, db *pgxpool.Pool, eventID int64, 
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	if err := replaceEventSettingsTx(ctx, tx, eventID, content); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func replaceEventSettingsTx(ctx context.Context, tx pgx.Tx, eventID int64, content templateContent) error {
 	for _, tbl := range []string{"event_item_tags", "event_cond_tags", "event_rules"} {
 		if _, err := tx.Exec(ctx, "DELETE FROM "+tbl+" WHERE event_id = $1", eventID); err != nil {
 			return err
@@ -235,7 +246,7 @@ func replaceEventSettings(ctx context.Context, db *pgxpool.Pool, eventID int64, 
 			return err
 		}
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 func loadTagLabels(ctx context.Context, db *pgxpool.Pool, eventID int64, table string) ([]string, error) {
