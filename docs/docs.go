@@ -17,7 +17,7 @@ const docTemplate = `{
     "paths": {
         "/auth/google": {
             "post": {
-                "description": "Validate the ID token the frontend obtained from Google\nSign-In, then create or link the host account for that Google\nidentity and set a session cookie. Returns 503 when the server\nhas no GOOGLE_CLIENT_ID configured.",
+                "description": "Validate the ID token the frontend obtained from Google\nSign-In, then create or link the account for that Google\nidentity and set a session cookie. Returns 503 when the server\nhas no GOOGLE_CLIENT_ID configured.",
                 "consumes": [
                     "application/json"
                 ],
@@ -27,7 +27,7 @@ const docTemplate = `{
                 "tags": [
                     "auth"
                 ],
-                "summary": "Sign in a host with a Google ID token",
+                "summary": "Sign in an account with a Google ID token",
                 "parameters": [
                     {
                         "description": "Google ID token",
@@ -121,7 +121,7 @@ const docTemplate = `{
         },
         "/auth/login": {
             "post": {
-                "description": "Verify the host's email + password, then set a session cookie.",
+                "description": "Verify the account's email + password, then set a session cookie.",
                 "consumes": [
                     "application/json"
                 ],
@@ -131,10 +131,10 @@ const docTemplate = `{
                 "tags": [
                     "auth"
                 ],
-                "summary": "Log in a host account",
+                "summary": "Log in an account",
                 "parameters": [
                     {
-                        "description": "Host login",
+                        "description": "Account login",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -236,7 +236,7 @@ const docTemplate = `{
         },
         "/auth/register": {
             "post": {
-                "description": "Create a host account with name, email, and password. Sets a\nsession cookie on success. Only hosts have accounts;\nco-organizers and participants join through /auth/join.",
+                "description": "Create an account with name, email, and password. Sets a\nsession cookie on success. Accounts can create events;\nco-organizers and participants join through /auth/join.",
                 "consumes": [
                     "application/json"
                 ],
@@ -246,10 +246,10 @@ const docTemplate = `{
                 "tags": [
                     "auth"
                 ],
-                "summary": "Register a host account",
+                "summary": "Register an account",
                 "parameters": [
                     {
-                        "description": "Host registration",
+                        "description": "Account registration",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -306,7 +306,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Host-only. Persists the event, adds the host to event_members\nwith role 'host', and issues an invite code atomically.\nSelected template tags and rules are applied in the same transaction.\nCustom events start with empty settings. The\nresponse carries the code so the client can jump straight to\nthe invite screen without a second round-trip.",
+                "description": "Account-only. Persists the event, adds the account to event_members\nwith role 'host', and issues an invite code atomically.\nSelected template tags and rules are applied in the same transaction.\nCustom events start with empty settings. The\nresponse carries the code so the client can jump straight to\nthe invite screen without a second round-trip.",
                 "consumes": [
                     "application/json"
                 ],
@@ -911,7 +911,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Host-only. Creates a seat-holder row with no host or guest\nidentity yet; use invite codes to bind a real session.",
+                "description": "Host-only. Creates a seat-holder row with no account or guest\nidentity yet; use invite codes to bind a real session.",
                 "consumes": [
                     "application/json"
                 ],

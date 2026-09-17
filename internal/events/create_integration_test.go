@@ -34,8 +34,8 @@ func TestCreateEventTemplateTransaction(t *testing.T) {
 	if _, err := SeedTemplates(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	var hostID int64
-	if err := db.QueryRow(ctx, `INSERT INTO hosts (name,email) VALUES ('test', $1) RETURNING id`, fmt.Sprintf("template-%d@example.com", time.Now().UnixNano())).Scan(&hostID); err != nil {
+	var accountID int64
+	if err := db.QueryRow(ctx, `INSERT INTO accounts (name,email) VALUES ('test', $1) RETURNING id`, fmt.Sprintf("template-%d@example.com", time.Now().UnixNano())).Scan(&accountID); err != nil {
 		t.Fatal(err)
 	}
 	content, err := loadTemplateContent(ctx, db, "烤肉/露營模板")
@@ -44,7 +44,7 @@ func TestCreateEventTemplateTransaction(t *testing.T) {
 	}
 	create := func(template string) createEventResponse {
 		t.Helper()
-		event, err := createEventTx(ctx, db, hostID, createEventRequest{Name: "test", Template: template})
+		event, err := createEventTx(ctx, db, accountID, createEventRequest{Name: "test", Template: template})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -80,14 +80,14 @@ func TestCreateEventTemplateTransaction(t *testing.T) {
 			t.Fatalf("custom %s: %d, %v", table, count, err)
 		}
 	}
-	if _, err := createEventTx(ctx, db, hostID, createEventRequest{Name: "missing", Template: "聚餐模板"}); !errors.Is(err, errTemplateUnavailable) {
+	if _, err := createEventTx(ctx, db, accountID, createEventRequest{Name: "missing", Template: "聚餐模板"}); !errors.Is(err, errTemplateUnavailable) {
 		t.Fatalf("missing template: %v", err)
 	}
 	// A duplicate label causes settings insertion to fail after event insertion.
 	if _, err := db.Exec(ctx, `UPDATE templates SET content=jsonb_set(content,'{item_tags}','["duplicate","duplicate"]') WHERE label='烤肉/露營模板'`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := createEventTx(ctx, db, hostID, createEventRequest{Name: "rollback", Template: "烤肉/露營模板"}); err == nil {
+	if _, err := createEventTx(ctx, db, accountID, createEventRequest{Name: "rollback", Template: "烤肉/露營模板"}); err == nil {
 		t.Fatal("expected duplicate label failure")
 	}
 	var count int

@@ -22,12 +22,12 @@ const SessionTTL = 30 * 24 * time.Hour
 
 // Subject identifies who a session belongs to.
 type Subject struct {
-	HostID  int64
-	GuestID int64
+	AccountID int64
+	GuestID   int64
 }
 
-// IsHost reports whether the subject is a host account.
-func (s Subject) IsHost() bool { return s.HostID != 0 }
+// IsAccount reports whether the subject is a registered account.
+func (s Subject) IsAccount() bool { return s.AccountID != 0 }
 
 // IsGuest reports whether the subject is a session-bound guest.
 func (s Subject) IsGuest() bool { return s.GuestID != 0 }
@@ -42,20 +42,20 @@ func IssueSession(ctx context.Context, db *pgxpool.Pool, c *gin.Context, sub Sub
 		return "", fmt.Errorf("generate session token: %w", err)
 	}
 
-	var hostID, guestID any
+	var accountID, guestID any
 	switch {
-	case sub.IsHost() && !sub.IsGuest():
-		hostID = sub.HostID
-	case sub.IsGuest() && !sub.IsHost():
+	case sub.IsAccount() && !sub.IsGuest():
+		accountID = sub.AccountID
+	case sub.IsGuest() && !sub.IsAccount():
 		guestID = sub.GuestID
 	default:
-		return "", errors.New("session subject must be exactly one of host or guest")
+		return "", errors.New("session subject must be exactly one of account or guest")
 	}
 
 	expires := time.Now().Add(SessionTTL)
 	if _, err := db.Exec(ctx,
-		`INSERT INTO sessions (token, host_id, guest_id, expires_at) VALUES ($1, $2, $3, $4)`,
-		token, hostID, guestID, expires); err != nil {
+		`INSERT INTO sessions (token, account_id, guest_id, expires_at) VALUES ($1, $2, $3, $4)`,
+		token, accountID, guestID, expires); err != nil {
 		return "", fmt.Errorf("insert session: %w", err)
 	}
 
@@ -71,10 +71,10 @@ func LookupSession(ctx context.Context, db *pgxpool.Pool, c *gin.Context) (Subje
 	}
 	var sub Subject
 	err = db.QueryRow(ctx,
-		`SELECT COALESCE(host_id, 0), COALESCE(guest_id, 0)
+		`SELECT COALESCE(account_id, 0), COALESCE(guest_id, 0)
 		   FROM sessions
 		  WHERE token = $1 AND expires_at > NOW()`, token).
-		Scan(&sub.HostID, &sub.GuestID)
+		Scan(&sub.AccountID, &sub.GuestID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Subject{}, ErrNoSession
 	}

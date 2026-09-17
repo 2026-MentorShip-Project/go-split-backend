@@ -59,11 +59,11 @@ func (h *Handler) GetMembers(c *gin.Context) {
 	rows, err := h.DB.Query(c.Request.Context(), `
 		SELECT id, display, role::text, tags,
 		       (guest_id IS NOT NULL) AS guest,
-		       COALESCE(($1 <> 0 AND host_id = $1) OR ($2 <> 0 AND guest_id = $2), false) AS you
+		       COALESCE(($1 <> 0 AND account_id = $1) OR ($2 <> 0 AND guest_id = $2), false) AS you
 		  FROM event_members
 		 WHERE event_id = $3
 		 ORDER BY id`,
-		sub.HostID, sub.GuestID, eventID)
+		sub.AccountID, sub.GuestID, eventID)
 	if err != nil {
 		respondErr(c, http.StatusInternalServerError, "list members")
 		return
@@ -90,7 +90,7 @@ type createMemberRequest struct {
 
 // PostMember godoc
 // @Summary     Add a placeholder member to an event
-// @Description Host-only. Creates a seat-holder row with no host or guest
+// @Description Host-only. Creates a seat-holder row with no account or guest
 // @Description identity yet; use invite codes to bind a real session.
 // @Tags        members
 // @Accept      json

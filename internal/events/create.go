@@ -54,7 +54,7 @@ type createEventResponse struct {
 
 // PostEvent godoc
 // @Summary     Create a new event
-// @Description Host-only. Persists the event, adds the host to event_members
+// @Description Account-only. Persists the event, adds the account to event_members
 // @Description with role 'host', and issues an invite code atomically.
 // @Description Selected template tags and rules are applied in the same transaction.
 // @Description Custom events start with empty settings. The
@@ -89,13 +89,13 @@ func (h *Handler) PostEvent(c *gin.Context) {
 	}
 
 	sub := auth.CurrentSubject(c)
-	if !sub.IsHost() {
-		respondErr(c, http.StatusForbidden, "only hosts can create events")
+	if !sub.IsAccount() {
+		respondErr(c, http.StatusForbidden, "only accounts can create events")
 		return
 	}
 
 	ctx := c.Request.Context()
-	out, err := createEventTx(ctx, h.DB, sub.HostID, req)
+	out, err := createEventTx(ctx, h.DB, sub.AccountID, req)
 	if err != nil {
 		if errors.Is(err, errTemplateUnavailable) {
 			respondErr(c, http.StatusBadRequest, "template not available")
@@ -110,7 +110,7 @@ func (h *Handler) PostEvent(c *gin.Context) {
 // createEventTx runs the whole insert in one transaction so the event, the
 // host membership row, template settings, and invite code are visible together or not at
 // all.
-func createEventTx(ctx context.Context, db *pgxpool.Pool, hostID int64, req createEventRequest) (createEventResponse, error) {
+func createEventTx(ctx context.Context, db *pgxpool.Pool, accountID int64, req createEventRequest) (createEventResponse, error) {
 	tx, err := db.Begin(ctx)
 	if err != nil {
 		return createEventResponse{}, fmt.Errorf("begin tx: %w", err)
@@ -130,10 +130,10 @@ func createEventTx(ctx context.Context, db *pgxpool.Pool, hostID int64, req crea
 
 	var eventID int64
 	err = tx.QueryRow(ctx, `
-		INSERT INTO events (host_id, name, place, starts_at, ends_at, template)
+		INSERT INTO events (account_id, name, place, starts_at, ends_at, template)
 		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id`,
-		hostID, req.Name, req.Place, req.StartsAt, req.EndsAt, req.Template,
+		accountID, req.Name, req.Place, req.StartsAt, req.EndsAt, req.Template,
 	).Scan(&eventID)
 	if err != nil {
 		return createEventResponse{}, fmt.Errorf("insert event: %w", err)
@@ -143,15 +143,15 @@ func createEventTx(ctx context.Context, db *pgxpool.Pool, hostID int64, req crea
 		return createEventResponse{}, fmt.Errorf("apply template: %w", err)
 	}
 
-	display, err := lookupHostName(ctx, tx, hostID)
+	display, err := lookupAccountName(ctx, tx, accountID)
 	if err != nil {
 		return createEventResponse{}, err
 	}
 
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO event_members (event_id, host_id, display, role)
+		INSERT INTO event_members (event_id, account_id, display, role)
 		VALUES ($1, $2, $3, 'host')`,
-		eventID, hostID, display); err != nil {
+		eventID, accountID, display); err != nil {
 		return createEventResponse{}, fmt.Errorf("attach host: %w", err)
 	}
 
@@ -174,14 +174,14 @@ func createEventTx(ctx context.Context, db *pgxpool.Pool, hostID int64, req crea
 	}, nil
 }
 
-func lookupHostName(ctx context.Context, tx pgx.Tx, hostID int64) (string, error) {
+func lookupAccountName(ctx context.Context, tx pgx.Tx, accountID int64) (string, error) {
 	var name string
-	err := tx.QueryRow(ctx, `SELECT name FROM hosts WHERE id = $1`, hostID).Scan(&name)
+	err := tx.QueryRow(ctx, `SELECT name FROM accounts WHERE id = $1`, accountID).Scan(&name)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return "", errors.New("session host not found")
+			return "", errors.New("session account not found")
 		}
-		return "", fmt.Errorf("load host name: %w", err)
+		return "", fmt.Errorf("load account name: %w", err)
 	}
 	return name, nil
 }

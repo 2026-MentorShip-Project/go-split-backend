@@ -66,3 +66,11 @@ usable immediately.
 # run unit test & linter
 make pre-commit-check
 ```
+### Account identity schema
+
+Registered identities are stored in `accounts`. The `events`, `event_members`,
+and `sessions` tables reference them through `account_id`; `host` remains an
+event membership role. Migration `0008_accounts.sql` renames the existing table,
+columns, constraints, indexes, and ID sequence while preserving data. The server
+applies pending migrations at startup. Deploy this version with old server
+instances stopped, because earlier versions query the previous names.
