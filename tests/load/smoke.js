@@ -19,14 +19,8 @@ export const options = {
 };
 
 export function setup() {
-  const params = { headers: { 'Content-Type': 'application/json' } };
-  const registered = http.post(`${base}/auth/register`, JSON.stringify({
-    name: 'Load host', email: `load-${Date.now()}@example.com`, password: 'ci-password-123',
-  }), params);
-  if (registered.status !== 201) fail('load account setup failed');
-  const created = http.post(`${base}/events`, JSON.stringify({ name: 'Load event', template: '自訂' }), params);
-  if (created.status !== 201) fail('load event setup failed');
-  return { token: registered.cookies.session[0].value, eventID: created.json('id') };
+  if (!__ENV.LOAD_SESSION || !__ENV.LOAD_EVENT_ID) fail('seed disposable fixtures with the Go E2E harness');
+  return { token: __ENV.LOAD_SESSION, eventID: Number(__ENV.LOAD_EVENT_ID) };
 }
 
 export default function (data) {

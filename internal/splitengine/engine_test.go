@@ -147,3 +147,20 @@ func TestJSONWeightDefaultAndZero(t *testing.T) {
 		}
 	}
 }
+
+func TestHubHostBalanceDirections(t *testing.T) {
+	for _, tc := range []struct {
+		host, other int64
+		want        []Transfer
+	}{
+		{800, -800, []Transfer{{2, 1, 800}}},
+		{-800, 800, []Transfer{{1, 2, 800}}},
+		{0, 0, []Transfer{}},
+	} {
+		s := Shares{PerMember: map[int64]MemberShares{1: {Net: tc.host}, 2: {Net: tc.other}}}
+		got, err := HubTransfers(s, 1)
+		if err != nil || !reflect.DeepEqual(got, tc.want) {
+			t.Fatalf("host net %d: %v %v", tc.host, got, err)
+		}
+	}
+}
