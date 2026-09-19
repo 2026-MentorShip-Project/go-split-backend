@@ -1,6 +1,7 @@
 package events
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,9 +9,10 @@ import (
 	"strconv"
 	"time"
 
+	"go-split-backend/internal/database"
+
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"go-split-backend/internal/auth"
 )
@@ -32,18 +34,19 @@ type itemDTO struct {
 	AuthorMemberID int64       `json:"author_member_id"`
 	HasReceipt     bool        `json:"has_receipt"`
 	CreatedAt      time.Time   `json:"created_at"`
-	TotalCents     int64       `json:"total_cents"`
+	Total          int64       `json:"total"`
 	Details        []detailDTO `json:"details"`
 }
 
 type detailDTO struct {
-	ID           int64            `json:"id"`
-	Ordinal      int              `json:"ordinal"`
-	Name         string           `json:"name"`
-	AmountCents  int64            `json:"amount_cents"`
-	Tag          *string          `json:"tag"`
-	Note         string           `json:"note"`
-	CustomShares map[string]int64 `json:"custom_shares"`
+	ID              int64            `json:"id"`
+	Ordinal         int              `json:"ordinal"`
+	Name            string           `json:"name"`
+	Amount          int64            `json:"amount"`
+	Tag             *string          `json:"tag"`
+	Note            string           `json:"note"`
+	CustomShares    map[string]int64 `json:"custom_amounts"`
+	ManualMemberIDs []int64          `json:"manual_member_ids"`
 }
 
 type itemsResponse struct {
@@ -51,24 +54,46 @@ type itemsResponse struct {
 }
 
 type createDetailRequest struct {
-	Name         string           `json:"name"          binding:"required,min=1,max=120"`
-	AmountCents  int64            `json:"amount_cents"  binding:"gte=0"`
-	Tag          *string          `json:"tag"`
-	Note         string           `json:"note"`
-	CustomShares map[string]int64 `json:"custom_shares"`
+	ID              int64            `json:"id,omitempty"`
+	Name            string           `json:"name"`
+	Amount          int64            `json:"amount"`
+	Tag             *string          `json:"tag"`
+	Note            string           `json:"note"`
+	CustomShares    map[string]int64 `json:"custom_amounts"`
+	ManualMemberIDs []int64          `json:"manual_member_ids"`
+}
+
+// Reject legacy cent-based fields and missing amounts rather than silently save zero.
+func (d *createDetailRequest) UnmarshalJSON(data []byte) error {
+	type plain createDetailRequest
+	var value plain
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&value); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if len(fields["amount"]) == 0 || string(fields["amount"]) == "null" {
+		return errors.New("amount is required in whole NT dollars")
+	}
+	*d = createDetailRequest(value)
+	return nil
 }
 
 type createItemRequest struct {
 	PayerMemberID int64                 `json:"payer_member_id" binding:"required"`
 	HasReceipt    bool                  `json:"has_receipt"`
-	Details       []createDetailRequest `json:"details"         binding:"required,min=1,dive"`
+	Details       []createDetailRequest `json:"details"`
 }
 
 // PostItem godoc
 // @Summary     Create an expense card with inline details
 // @Description Host or co-organizer only. The whole card is persisted in
 // @Description one transaction: card row, then every detail line with its
-// @Description tag, note, amount in cents, and optional custom_shares map.
+// @Description tag, note, amount in whole NT dollars, and optional custom_amounts map.
 // @Tags        items
 // @Accept      json
 // @Produce     json
@@ -97,6 +122,19 @@ func (h *Handler) PostItem(c *gin.Context) {
 		return
 	}
 
+	if issues, err := validateDetails(c.Request.Context(), h.DB, eventID, req.Details); err != nil {
+		respondErr(c, 500, "validate details")
+		return
+	} else if len(issues) > 0 {
+		c.JSON(422, validationResponse{Error: "invalid details", Details: issues})
+		return
+	}
+	for _, d := range req.Details {
+		if d.ID != 0 {
+			respondErr(c, 400, "new details must omit id")
+			return
+		}
+	}
 	item, err := createItemTx(c.Request.Context(), h.DB, eventID, author, req)
 	if err != nil {
 		respondErr(c, http.StatusInternalServerError, "create item")
@@ -108,7 +146,8 @@ func (h *Handler) PostItem(c *gin.Context) {
 // GetItems godoc
 // @Summary     List every item in an event
 // @Description Any member may call. Cards ordered newest first, details
-// @Description within a card ordered by ordinal.
+// @Description within a card ordered by ordinal. Optional tag filters cards containing that tag.
+// @Param tag query string false "Item tag to locate"
 // @Tags        items
 // @Produce     json
 // @Param       id path int true "Event id"
@@ -122,6 +161,18 @@ func (h *Handler) GetItems(c *gin.Context) {
 	if err != nil {
 		respondErr(c, http.StatusInternalServerError, "list items")
 		return
+	}
+	if label := c.Query("tag"); label != "" {
+		filtered := []itemDTO{}
+		for _, item := range items {
+			for _, d := range item.Details {
+				if d.Tag != nil && *d.Tag == label {
+					filtered = append(filtered, item)
+					break
+				}
+			}
+		}
+		items = filtered
 	}
 	c.JSON(http.StatusOK, itemsResponse{Items: items})
 }
@@ -158,7 +209,7 @@ func (h *Handler) GetItem(c *gin.Context) {
 
 var errPayerNotInEvent = errors.New("payer not in event")
 
-func validatePayer(ctx context.Context, db *pgxpool.Pool, eventID, payerID int64) error {
+func validatePayer(ctx context.Context, db database.Store, eventID, payerID int64) error {
 	var found int
 	err := db.QueryRow(ctx,
 		`SELECT 1 FROM event_members WHERE id = $1 AND event_id = $2`,
@@ -169,7 +220,7 @@ func validatePayer(ctx context.Context, db *pgxpool.Pool, eventID, payerID int64
 	return err
 }
 
-func createItemTx(ctx context.Context, db *pgxpool.Pool, eventID, authorID int64, req createItemRequest) (itemDTO, error) {
+func createItemTx(ctx context.Context, db database.Store, eventID, authorID int64, req createItemRequest) (itemDTO, error) {
 	tx, err := db.Begin(ctx)
 	if err != nil {
 		return itemDTO{}, err
@@ -203,24 +254,25 @@ func createItemTx(ctx context.Context, db *pgxpool.Pool, eventID, authorID int64
 		}
 		var detailID int64
 		err = tx.QueryRow(ctx, `
-			INSERT INTO item_details (item_id, ordinal, name, amount_cents, tag, note, custom_shares)
-			VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+			INSERT INTO item_details (item_id, ordinal, name, amount, tag, note, custom_shares, manual_member_ids)
+			VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
 			RETURNING id`,
-			itemID, i, d.Name, d.AmountCents, d.Tag, d.Note, sharesJSON,
+			itemID, i, d.Name, d.Amount, d.Tag, d.Note, sharesJSON, d.ManualMemberIDs,
 		).Scan(&detailID)
 		if err != nil {
 			return itemDTO{}, err
 		}
 		details = append(details, detailDTO{
-			ID:           detailID,
-			Ordinal:      i,
-			Name:         d.Name,
-			AmountCents:  d.AmountCents,
-			Tag:          d.Tag,
-			Note:         d.Note,
-			CustomShares: shares,
+			ID:              detailID,
+			Ordinal:         i,
+			Name:            d.Name,
+			Amount:          d.Amount,
+			Tag:             d.Tag,
+			Note:            d.Note,
+			CustomShares:    shares,
+			ManualMemberIDs: d.ManualMemberIDs,
 		})
-		total += d.AmountCents
+		total += d.Amount
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return itemDTO{}, err
@@ -231,12 +283,26 @@ func createItemTx(ctx context.Context, db *pgxpool.Pool, eventID, authorID int64
 		AuthorMemberID: authorID,
 		HasReceipt:     req.HasReceipt,
 		CreatedAt:      createdAt,
-		TotalCents:     total,
+		Total:          total,
 		Details:        details,
 	}, nil
 }
 
-func loadItems(ctx context.Context, db *pgxpool.Pool, eventID, itemID int64) ([]itemDTO, error) {
+func loadItems(ctx context.Context, db database.Store, eventID, itemID int64) ([]itemDTO, error) {
+	snap, err := loadSnapshot(ctx, db, eventID)
+	if err != nil {
+		return nil, err
+	}
+	if snap != nil {
+		out := []itemDTO{}
+		for _, it := range snap.Event.Items {
+			if itemID == 0 || it.ID == itemID {
+				out = append(out, it)
+			}
+		}
+		return out, nil
+	}
+
 	filter := ""
 	args := []any{eventID}
 	if itemID > 0 {
@@ -276,7 +342,7 @@ func loadItems(ctx context.Context, db *pgxpool.Pool, eventID, itemID int64) ([]
 	}
 
 	dRows, err := db.Query(ctx, `
-		SELECT id, item_id, ordinal, name, amount_cents, tag, note, custom_shares::text
+		SELECT id, item_id, ordinal, name, amount, tag, note, custom_shares::text, manual_member_ids
 		  FROM item_details
 		 WHERE item_id = ANY($1)
 		 ORDER BY item_id, ordinal`, ids)
@@ -290,7 +356,7 @@ func loadItems(ctx context.Context, db *pgxpool.Pool, eventID, itemID int64) ([]
 			itemPK     int64
 			sharesText string
 		)
-		if err := dRows.Scan(&d.ID, &itemPK, &d.Ordinal, &d.Name, &d.AmountCents, &d.Tag, &d.Note, &sharesText); err != nil {
+		if err := dRows.Scan(&d.ID, &itemPK, &d.Ordinal, &d.Name, &d.Amount, &d.Tag, &d.Note, &sharesText, &d.ManualMemberIDs); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(sharesText), &d.CustomShares); err != nil {
@@ -298,7 +364,7 @@ func loadItems(ctx context.Context, db *pgxpool.Pool, eventID, itemID int64) ([]
 		}
 		parent := byID[itemPK]
 		parent.Details = append(parent.Details, d)
-		parent.TotalCents += d.AmountCents
+		parent.Total += d.Amount
 	}
 	return out, dRows.Err()
 }
@@ -321,7 +387,7 @@ type updateItemRequest struct {
 // @Summary     Update an item
 // @Description Host or the co-organizer who authored the item may call.
 // @Description Partial update on payer / has_receipt. If details is present
-// @Description the whole detail set is replaced atomically.
+// @Description the whole detail set is saved atomically. Include id to retain an existing detail; omit id for new lines.
 // @Tags        items
 // @Accept      json
 // @Produce     json
@@ -360,7 +426,20 @@ func (h *Handler) PatchItem(c *gin.Context) {
 		}
 	}
 
+	if req.Details != nil {
+		if issues, err := validateDetails(c.Request.Context(), h.DB, eventID, req.Details); err != nil {
+			respondErr(c, 500, "validate details")
+			return
+		} else if len(issues) > 0 {
+			c.JSON(422, validationResponse{Error: "invalid details", Details: issues})
+			return
+		}
+	}
 	if err := updateItemTx(c.Request.Context(), h.DB, eventID, itemID, req); err != nil {
+		if errors.Is(err, errInvalidDetailID) {
+			respondErr(c, 400, err.Error())
+			return
+		}
 		respondErr(c, http.StatusInternalServerError, "update item")
 		return
 	}
@@ -403,7 +482,7 @@ func (h *Handler) DeleteItem(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func authorMayMutate(c *gin.Context, db *pgxpool.Pool, eventID, itemID int64) bool {
+func authorMayMutate(c *gin.Context, db database.Store, eventID, itemID int64) bool {
 	var authorID int64
 	err := db.QueryRow(c.Request.Context(),
 		`SELECT author_member_id FROM items WHERE id = $1 AND event_id = $2`,
@@ -426,7 +505,7 @@ func authorMayMutate(c *gin.Context, db *pgxpool.Pool, eventID, itemID int64) bo
 	return true
 }
 
-func updateItemTx(ctx context.Context, db *pgxpool.Pool, eventID, itemID int64, req updateItemRequest) error {
+func updateItemTx(ctx context.Context, db database.Store, eventID, itemID int64, req updateItemRequest) error {
 	tx, err := db.Begin(ctx)
 	if err != nil {
 		return err
@@ -457,24 +536,8 @@ func updateItemTx(ctx context.Context, db *pgxpool.Pool, eventID, itemID int64, 
 	}
 
 	if req.Details != nil {
-		if _, err := tx.Exec(ctx, `DELETE FROM item_details WHERE item_id = $1`, itemID); err != nil {
+		if err := replaceDetails(ctx, tx, itemID, req.Details); err != nil {
 			return err
-		}
-		for i, d := range req.Details {
-			shares := d.CustomShares
-			if shares == nil {
-				shares = map[string]int64{}
-			}
-			sharesJSON, err := json.Marshal(shares)
-			if err != nil {
-				return err
-			}
-			if _, err := tx.Exec(ctx, `
-				INSERT INTO item_details (item_id, ordinal, name, amount_cents, tag, note, custom_shares)
-				VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
-				itemID, i, d.Name, d.AmountCents, d.Tag, d.Note, sharesJSON); err != nil {
-				return err
-			}
 		}
 	}
 	return tx.Commit(ctx)

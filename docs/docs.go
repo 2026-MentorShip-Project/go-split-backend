@@ -15,6 +15,32 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/auth/": {
+            "delete": {
+                "description": "Delete the account belonging to the current account session.",
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Delete the current account",
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/auth.errorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/auth.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/google": {
             "post": {
                 "description": "Validate the ID token the frontend obtained from Google\nSign-In, then create or link the account for that Google\nidentity and set a session cookie. Returns 503 when the server\nhas no GOOGLE_CLIENT_ID configured.",
@@ -67,6 +93,47 @@ const docTemplate = `{
                 }
             }
         },
+        "/auth/invite/{code}": {
+            "get": {
+                "description": "Public lookup by invitation code. Does not expose members or expenses.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Get an active invitation's name and available join conditions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invitation code",
+                        "name": "code",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.invitationResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/auth.errorResponse"
+                        }
+                    },
+                    "410": {
+                        "description": "Gone",
+                        "schema": {
+                            "$ref": "#/definitions/auth.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/join": {
             "post": {
                 "description": "Look up the invite code, create a guest identity if the\nemail + phone combination is new, attach the guest to the\nevent as a participant, and set a session cookie. The\ninvite code is only accepted while the event is not settled.",
@@ -112,52 +179,6 @@ const docTemplate = `{
                     },
                     "410": {
                         "description": "Gone",
-                        "schema": {
-                            "$ref": "#/definitions/auth.errorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/auth/login": {
-            "post": {
-                "description": "Verify the account's email + password, then set a session cookie.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "auth"
-                ],
-                "summary": "Log in an account",
-                "parameters": [
-                    {
-                        "description": "Account login",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/auth.loginRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/auth.accountResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/auth.errorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/auth.errorResponse"
                         }
@@ -227,52 +248,6 @@ const docTemplate = `{
                     },
                     "410": {
                         "description": "Gone",
-                        "schema": {
-                            "$ref": "#/definitions/auth.errorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/auth/register": {
-            "post": {
-                "description": "Create an account with name, email, and password. Sets a\nsession cookie on success. Accounts can create events;\nco-organizers and participants join through /auth/join.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "auth"
-                ],
-                "summary": "Register an account",
-                "parameters": [
-                    {
-                        "description": "Account registration",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/auth.registerRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/auth.accountResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/auth.errorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/auth.errorResponse"
                         }
@@ -416,7 +391,7 @@ const docTemplate = `{
         },
         "/events/{id}": {
             "get": {
-                "description": "Any member of the event may call. Returns the event\nmetadata, the current invite code, every member with role\nand tags, every item card with its detail lines, and the\ngrand total in cents so the event page's header can render\nwithout a second round-trip.",
+                "description": "Any member of the event may call. Returns the event\nmetadata, the current invite code, every member with role\nand tags, every item card with its detail lines, and the\ngrand total in whole NT dollars so the event page's header can render\nwithout a second round-trip.",
                 "produces": [
                     "application/json"
                 ],
@@ -465,21 +440,15 @@ const docTemplate = `{
                         }
                     }
                 }
-            }
-        },
-        "/events/{id}/apply-template": {
-            "post": {
-                "description": "Host-only. Reads the template's content and replaces the\nevent's tag catalogs and rules in one transaction. Items\nalready recorded keep their tag strings unchanged even if\nthe new catalog no longer lists them.",
+            },
+            "patch": {
                 "consumes": [
                     "application/json"
                 ],
-                "produces": [
-                    "application/json"
-                ],
                 "tags": [
-                    "settings"
+                    "events"
                 ],
-                "summary": "Reset an event's tags and rules from a template",
+                "summary": "Edit an active event's metadata (template is immutable)",
                 "parameters": [
                     {
                         "type": "integer",
@@ -489,59 +458,28 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Template label",
+                        "description": "Name, place and optional start/end dates; omit template",
                         "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/events.applyTemplateRequest"
+                            "$ref": "#/definitions/events.metadataRequest"
                         }
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/events.applyTemplateResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
+                    "204": {
+                        "description": "No Content"
                     }
                 }
             }
         },
         "/events/{id}/archive": {
             "post": {
-                "description": "Host-only. Flips archived=true; the event and every child\nrow becomes read-only. Requires the event to already be\nsettled. Idempotent on an already-archived event.",
-                "produces": [
-                    "application/json"
-                ],
                 "tags": [
                     "settlement"
                 ],
-                "summary": "Archive a settled event",
+                "summary": "Archive a settled event without payment prerequisites",
                 "parameters": [
                     {
                         "type": "integer",
@@ -554,31 +492,13 @@ const docTemplate = `{
                 "responses": {
                     "204": {
                         "description": "No Content"
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
                     }
                 }
             }
         },
         "/events/{id}/items": {
             "get": {
-                "description": "Any member may call. Cards ordered newest first, details\nwithin a card ordered by ordinal.",
+                "description": "Any member may call. Cards ordered newest first, details\nwithin a card ordered by ordinal. Optional tag filters cards containing that tag.",
                 "produces": [
                     "application/json"
                 ],
@@ -587,6 +507,12 @@ const docTemplate = `{
                 ],
                 "summary": "List every item in an event",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Item tag to locate",
+                        "name": "tag",
+                        "in": "query"
+                    },
                     {
                         "type": "integer",
                         "description": "Event id",
@@ -623,7 +549,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Host or co-organizer only. The whole card is persisted in\none transaction: card row, then every detail line with its\ntag, note, amount in cents, and optional custom_shares map.",
+                "description": "Host or co-organizer only. The whole card is persisted in\none transaction: card row, then every detail line with its\ntag, note, amount in whole NT dollars, and optional custom_amounts map.",
                 "consumes": [
                     "application/json"
                 ],
@@ -794,7 +720,7 @@ const docTemplate = `{
                 }
             },
             "patch": {
-                "description": "Host or the co-organizer who authored the item may call.\nPartial update on payer / has_receipt. If details is present\nthe whole detail set is replaced atomically.",
+                "description": "Host or the co-organizer who authored the item may call.\nPartial update on payer / has_receipt. If details is present\nthe whole detail set is saved atomically. Include id to retain an existing detail; omit id for new lines.",
                 "consumes": [
                     "application/json"
                 ],
@@ -864,6 +790,34 @@ const docTemplate = `{
                 }
             }
         },
+        "/events/{id}/me/details": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "shares"
+                ],
+                "summary": "Get every detail contributing to the caller's hub balance, including zeros",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/events.personalResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/events/{id}/members": {
             "get": {
                 "description": "Any member of the event may call. Each row carries role,\ncondition tags, guest flag, and a \"you\" marker on the\ncaller's own row.",
@@ -911,7 +865,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Host-only. Creates a seat-holder row with no account or guest\nidentity yet; use invite codes to bind a real session.",
+                "description": "Host-only. Creates a seat-holder row with no account or guest\nidentity. Virtual members are independent seats, not invitations.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1101,6 +1055,41 @@ const docTemplate = `{
                 }
             }
         },
+        "/events/{id}/members/{member_id}/breakdown": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "shares"
+                ],
+                "summary": "Host-only breakdown of one member's complete detail ledger",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Member id",
+                        "name": "member_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/events.personalResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/events/{id}/members/{member_id}/role": {
             "get": {
                 "description": "Any member of the event may call. Returns the role stored on\nthe event_members row (host, co, or member).",
@@ -1154,67 +1143,6 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/events/{id}/pairs/{a}/{b}": {
-            "get": {
-                "description": "Any member may call. Returns every detail that contributes\nto a direct debt between :a and :b, plus the signed net\n(positive: a owes b, negative: b owes a).",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "shares"
-                ],
-                "summary": "Item-level breakdown of debt between two members",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "Event id",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Member A id",
-                        "name": "a",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Member B id",
-                        "name": "b",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/events.pairResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/events.errorResponse"
                         }
@@ -1451,16 +1379,47 @@ const docTemplate = `{
                 }
             }
         },
+        "/events/{id}/settle": {
+            "post": {
+                "description": "Host-only. Locks edits and invitation use; stores all inputs and results atomically.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settlement"
+                ],
+                "summary": "Validate and permanently freeze an event",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/events.validationResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/events/{id}/shares": {
             "get": {
-                "description": "Any member may call. Runs the split engine against the\nevent's members, items, and rules and returns the whole\nbreakdown. Amounts are in cents.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "shares"
                 ],
-                "summary": "Compute per-member and per-detail shares for an event",
+                "summary": "Get split results (personal unless host or archived)",
                 "parameters": [
                     {
                         "type": "integer",
@@ -1475,18 +1434,6 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/events.sharesResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
                         }
                     }
                 }
@@ -1642,6 +1589,45 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "patch": {
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settings"
+                ],
+                "summary": "Rename a condition and its member/rule references atomically",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Current label",
+                        "name": "label",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New label",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/events.addLabelRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
             }
         },
         "/events/{id}/tags/items": {
@@ -1794,18 +1780,15 @@ const docTemplate = `{
                         }
                     }
                 }
-            }
-        },
-        "/events/{id}/transfers": {
-            "get": {
-                "description": "Any member may call. mode=min (default) greedy-matches\ndebtors to creditors. mode=hub routes every non-zero net\nthrough hub (a member id passed as ?hub=).",
-                "produces": [
+            },
+            "patch": {
+                "consumes": [
                     "application/json"
                 ],
                 "tags": [
-                    "shares"
+                    "settings"
                 ],
-                "summary": "List settlement transfers for an event",
+                "summary": "Rename an item tag and its rule/detail references atomically",
                 "parameters": [
                     {
                         "type": "integer",
@@ -1816,15 +1799,44 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "min or hub",
-                        "name": "mode",
-                        "in": "query"
+                        "description": "Current label",
+                        "name": "label",
+                        "in": "path",
+                        "required": true
                     },
                     {
+                        "description": "New label",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/events.addLabelRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/events/{id}/transfers": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "shares"
+                ],
+                "summary": "Get host-routed transfers (host only until archived)",
+                "parameters": [
+                    {
                         "type": "integer",
-                        "description": "member id when mode=hub",
-                        "name": "hub",
-                        "in": "query"
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {
@@ -1832,150 +1844,6 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/events.transfersResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/events/{id}/transfers/{from}/{to}/paid": {
-            "put": {
-                "description": "Host or co-organizer. The event must be settled; before\nsettle the transfer set is not stable and paid state has no\nmeaning. Idempotent.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "settlement"
-                ],
-                "summary": "Mark a transfer as paid",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "Event id",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "From member id",
-                        "name": "from",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "To member id",
-                        "name": "to",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "No Content"
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "description": "Host or co-organizer. Requires settled. Idempotent.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "settlement"
-                ],
-                "summary": "Undo a transfer's paid mark",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "Event id",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "From member id",
-                        "name": "from",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "To member id",
-                        "name": "to",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "No Content"
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
                         }
                     }
                 }
@@ -2060,11 +1928,29 @@ const docTemplate = `{
                 }
             }
         },
+        "auth.invitationResponse": {
+            "type": "object",
+            "properties": {
+                "cond_tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "event_id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "auth.joinRequest": {
             "type": "object",
             "required": [
                 "code",
                 "email",
+                "name",
                 "phone"
             ],
             "properties": {
@@ -2073,12 +1959,22 @@ const docTemplate = `{
                     "maxLength": 32,
                     "minLength": 1
                 },
+                "cond_tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "email": {
                     "type": "string"
                 },
                 "name": {
                     "type": "string",
                     "maxLength": 64
+                },
+                "note": {
+                    "type": "string",
+                    "maxLength": 1000
                 },
                 "phone": {
                     "type": "string",
@@ -2098,22 +1994,6 @@ const docTemplate = `{
                 },
                 "role": {
                     "type": "string"
-                }
-            }
-        },
-        "auth.loginRequest": {
-            "type": "object",
-            "required": [
-                "email",
-                "password"
-            ],
-            "properties": {
-                "email": {
-                    "type": "string"
-                },
-                "password": {
-                    "type": "string",
-                    "minLength": 1
                 }
             }
         },
@@ -2151,29 +2031,6 @@ const docTemplate = `{
                 }
             }
         },
-        "auth.registerRequest": {
-            "type": "object",
-            "required": [
-                "email",
-                "name",
-                "password"
-            ],
-            "properties": {
-                "email": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string",
-                    "maxLength": 64,
-                    "minLength": 1
-                },
-                "password": {
-                    "type": "string",
-                    "maxLength": 128,
-                    "minLength": 8
-                }
-            }
-        },
         "events.addLabelRequest": {
             "type": "object",
             "required": [
@@ -2187,66 +2044,30 @@ const docTemplate = `{
                 }
             }
         },
-        "events.applyTemplateRequest": {
-            "type": "object",
-            "required": [
-                "label"
-            ],
-            "properties": {
-                "label": {
-                    "type": "string",
-                    "maxLength": 64,
-                    "minLength": 1
-                }
-            }
-        },
-        "events.applyTemplateResponse": {
-            "type": "object",
-            "properties": {
-                "cond_tags": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "item_tags": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "label": {
-                    "type": "string"
-                },
-                "rules": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/events.ruleDTO"
-                    }
-                }
-            }
-        },
         "events.createDetailRequest": {
             "type": "object",
-            "required": [
-                "name"
-            ],
             "properties": {
-                "amount_cents": {
-                    "type": "integer",
-                    "minimum": 0
+                "amount": {
+                    "type": "integer"
                 },
-                "custom_shares": {
+                "custom_amounts": {
                     "type": "object",
                     "additionalProperties": {
                         "type": "integer",
                         "format": "int64"
                     }
                 },
+                "id": {
+                    "type": "integer"
+                },
+                "manual_member_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
                 "name": {
-                    "type": "string",
-                    "maxLength": 120,
-                    "minLength": 1
+                    "type": "string"
                 },
                 "note": {
                     "type": "string"
@@ -2312,13 +2133,11 @@ const docTemplate = `{
         "events.createItemRequest": {
             "type": "object",
             "required": [
-                "details",
                 "payer_member_id"
             ],
             "properties": {
                 "details": {
                     "type": "array",
-                    "minItems": 1,
                     "items": {
                         "$ref": "#/definitions/events.createDetailRequest"
                     }
@@ -2346,7 +2165,6 @@ const docTemplate = `{
                 "role": {
                     "type": "string",
                     "enum": [
-                        "host",
                         "co",
                         "member"
                     ]
@@ -2362,10 +2180,10 @@ const docTemplate = `{
         "events.detailDTO": {
             "type": "object",
             "properties": {
-                "amount_cents": {
+                "amount": {
                     "type": "integer"
                 },
-                "custom_shares": {
+                "custom_amounts": {
                     "type": "object",
                     "additionalProperties": {
                         "type": "integer",
@@ -2374,6 +2192,12 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "integer"
+                },
+                "manual_member_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
                 },
                 "name": {
                     "type": "string"
@@ -2389,24 +2213,61 @@ const docTemplate = `{
                 }
             }
         },
+        "events.detailIssue": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "detail_id": {
+                    "type": "integer"
+                },
+                "diff": {
+                    "type": "integer"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "item_id": {
+                    "type": "integer"
+                }
+            }
+        },
         "events.detailShareDTO": {
             "type": "object",
             "properties": {
-                "amount_cents": {
+                "amount": {
                     "type": "integer"
                 },
                 "detail_id": {
                     "type": "integer"
                 },
+                "diff": {
+                    "type": "integer"
+                },
+                "excluded": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/splitengine.Share"
+                    }
+                },
                 "item_id": {
                     "type": "integer"
                 },
                 "shares": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "integer",
-                        "format": "int64"
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/splitengine.Share"
                     }
+                },
+                "total_weight": {
+                    "type": "number"
+                },
+                "unit_price": {
+                    "type": "number"
+                },
+                "validity": {
+                    "$ref": "#/definitions/splitengine.Validity"
                 }
             }
         },
@@ -2466,7 +2327,7 @@ const docTemplate = `{
                 "template": {
                     "type": "string"
                 },
-                "total_cents": {
+                "total": {
                     "type": "integer"
                 }
             }
@@ -2541,7 +2402,7 @@ const docTemplate = `{
                 "payer_member_id": {
                     "type": "integer"
                 },
-                "total_cents": {
+                "total": {
                     "type": "integer"
                 }
             }
@@ -2567,6 +2428,18 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 32,
                     "minLength": 1
+                },
+                "cond_tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string"
                 }
             }
         },
@@ -2607,14 +2480,23 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
+                "note": {
+                    "type": "string"
+                },
                 "role": {
                     "type": "string"
+                },
+                "split_order": {
+                    "type": "integer"
                 },
                 "tags": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
+                },
+                "virtual": {
+                    "type": "boolean"
                 },
                 "you": {
                     "type": "boolean"
@@ -2624,16 +2506,16 @@ const docTemplate = `{
         "events.memberShareDTO": {
             "type": "object",
             "properties": {
+                "advanced": {
+                    "type": "integer"
+                },
                 "member_id": {
                     "type": "integer"
                 },
-                "net_cents": {
+                "net": {
                     "type": "integer"
                 },
-                "owed_cents": {
-                    "type": "integer"
-                },
-                "paid_cents": {
+                "owed": {
                     "type": "integer"
                 }
             }
@@ -2649,43 +2531,77 @@ const docTemplate = `{
                 }
             }
         },
-        "events.pairLineDTO": {
+        "events.metadataRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "ends_at": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 120
+                },
+                "place": {
+                    "type": "string",
+                    "maxLength": 200
+                },
+                "starts_at": {
+                    "type": "string"
+                },
+                "template": {
+                    "type": "string"
+                }
+            }
+        },
+        "events.personalLine": {
             "type": "object",
             "properties": {
-                "amount_cents": {
+                "advanced": {
                     "type": "integer"
                 },
                 "detail_id": {
                     "type": "integer"
                 },
-                "from_id": {
-                    "type": "integer"
-                },
                 "item_id": {
                     "type": "integer"
                 },
-                "to_id": {
+                "name": {
+                    "type": "string"
+                },
+                "net": {
+                    "type": "integer"
+                },
+                "owed": {
+                    "type": "integer"
+                },
+                "payer_id": {
                     "type": "integer"
                 }
             }
         },
-        "events.pairResponse": {
+        "events.personalResponse": {
             "type": "object",
             "properties": {
-                "a_id": {
-                    "type": "integer"
-                },
-                "b_id": {
-                    "type": "integer"
-                },
                 "lines": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/events.pairLineDTO"
+                        "$ref": "#/definitions/events.personalLine"
                     }
                 },
-                "net_a_owes_b_cents": {
+                "member_id": {
                     "type": "integer"
+                },
+                "net": {
+                    "type": "integer"
+                },
+                "transfers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/splitengine.Transfer"
+                    }
                 }
             }
         },
@@ -2770,7 +2686,7 @@ const docTemplate = `{
         "events.sharesResponse": {
             "type": "object",
             "properties": {
-                "grand_total_cents": {
+                "grand_total": {
                     "type": "integer"
                 },
                 "per_detail": {
@@ -2798,6 +2714,9 @@ const docTemplate = `{
                 },
                 "label": {
                     "type": "string"
+                },
+                "soon": {
+                    "type": "boolean"
                 }
             }
         },
@@ -2812,36 +2731,19 @@ const docTemplate = `{
                 }
             }
         },
-        "events.transferDTO": {
-            "type": "object",
-            "properties": {
-                "amount_cents": {
-                    "type": "integer"
-                },
-                "from_id": {
-                    "type": "integer"
-                },
-                "paid": {
-                    "type": "boolean"
-                },
-                "to_id": {
-                    "type": "integer"
-                }
-            }
-        },
         "events.transfersResponse": {
             "type": "object",
             "properties": {
                 "hub_id": {
                     "type": "integer"
                 },
-                "mode": {
+                "strategy": {
                     "type": "string"
                 },
                 "transfers": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/events.transferDTO"
+                        "$ref": "#/definitions/splitengine.Transfer"
                     }
                 }
             }
@@ -2884,6 +2786,98 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "events.validationResponse": {
+            "type": "object",
+            "properties": {
+                "details": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/events.detailIssue"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                }
+            }
+        },
+        "splitengine.Share": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "integer"
+                },
+                "member_id": {
+                    "type": "integer"
+                },
+                "trace": {
+                    "$ref": "#/definitions/splitengine.Trace"
+                }
+            }
+        },
+        "splitengine.Trace": {
+            "type": "object",
+            "properties": {
+                "cond_set_index": {
+                    "type": "integer"
+                },
+                "hit_cond_tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "remainder_bonus": {
+                    "type": "integer"
+                },
+                "rule_item_tag": {
+                    "type": "string"
+                },
+                "total_weight": {
+                    "type": "number"
+                },
+                "unit_price": {
+                    "type": "number"
+                },
+                "value": {
+                    "type": "integer"
+                },
+                "weight": {
+                    "type": "number"
+                }
+            }
+        },
+        "splitengine.Transfer": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "integer"
+                },
+                "from_id": {
+                    "type": "integer"
+                },
+                "to_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "splitengine.Validity": {
+            "type": "string",
+            "enum": [
+                "ok",
+                "no-participant",
+                "custom-mismatch",
+                "custom-overflow"
+            ],
+            "x-enum-varnames": [
+                "OK",
+                "NoParticipant",
+                "CustomMismatch",
+                "CustomOverflow"
+            ]
         }
     }
 }`

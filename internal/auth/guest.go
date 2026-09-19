@@ -5,25 +5,30 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"unicode"
+
+	"go-split-backend/internal/database"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // registerGuestRoutes wires the guest and logout endpoints. Called from
 // Handler.Register so the whole /auth group is set up in one place.
 func (h *Handler) registerGuestRoutes(g *gin.RouterGroup) {
+	g.GET("/invite/:code", h.GetInvitation)
 	g.POST("/join", h.PostJoin)
 	g.POST("/recover", h.PostRecover)
 	g.POST("/logout", h.PostLogout)
 }
 
 type joinRequest struct {
-	Code  string `json:"code"  binding:"required,min=1,max=32"`
-	Email string `json:"email" binding:"required,email"`
-	Phone string `json:"phone" binding:"required,min=1,max=32"`
-	Name  string `json:"name"  binding:"omitempty,max=64"`
+	Code     string   `json:"code"  binding:"required,min=1,max=32"`
+	Email    string   `json:"email" binding:"required,email"`
+	Phone    string   `json:"phone" binding:"required,min=1,max=32"`
+	Name     string   `json:"name" binding:"required,max=64"`
+	CondTags []string `json:"cond_tags"`
+	Note     string   `json:"note" binding:"max=1000"`
 }
 
 type joinResponse struct {
@@ -56,10 +61,20 @@ func (h *Handler) PostJoin(c *gin.Context) {
 	req.Code = strings.TrimSpace(req.Code)
 	req.Email = strings.TrimSpace(req.Email)
 	req.Phone = strings.TrimSpace(req.Phone)
-	req.Name = joinDisplayName(strings.TrimSpace(req.Name))
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" || !validPhone(req.Phone) {
+		respondErr(c, 400, "name and numeric phone are required")
+		return
+	}
 
 	ctx := c.Request.Context()
-	eventID, settled, err := lookupInvite(ctx, h.DB, req.Code)
+	tx, err := h.DB.Begin(ctx)
+	if err != nil {
+		respondErr(c, 500, "begin join")
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	eventID, settled, err := lookupInvite(ctx, tx, req.Code)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			respondErr(c, http.StatusNotFound, "invite code not found")
@@ -73,23 +88,31 @@ func (h *Handler) PostJoin(c *gin.Context) {
 		return
 	}
 
-	guestID, err := upsertGuest(ctx, h.DB, req.Email, req.Phone, req.Name)
+	if err := validateJoinConditions(ctx, tx, eventID, req.CondTags); err != nil {
+		respondErr(c, 400, err.Error())
+		return
+	}
+	guestID, err := upsertGuest(ctx, tx, req.Email, req.Phone, req.Name)
 	if err != nil {
 		respondErr(c, http.StatusInternalServerError, "create guest")
 		return
 	}
 
-	role, err := attachGuestToEvent(ctx, h.DB, eventID, guestID, req.Name)
+	role, err := attachGuestToEvent(ctx, tx, eventID, guestID, req.Name, req.CondTags, req.Note)
 	if err != nil {
 		respondErr(c, http.StatusInternalServerError, "attach guest to event")
 		return
 	}
 
-	if _, err := IssueSession(ctx, h.DB, c, Subject{GuestID: guestID}); err != nil {
+	if _, err := IssueSession(ctx, tx, c, Subject{GuestID: guestID}); err != nil {
 		respondErr(c, http.StatusInternalServerError, "issue session")
 		return
 	}
 
+	if err := tx.Commit(ctx); err != nil {
+		respondErr(c, 500, "commit join")
+		return
+	}
 	c.JSON(http.StatusOK, joinResponse{GuestID: guestID, EventID: eventID, Role: role})
 }
 
@@ -130,7 +153,13 @@ func (h *Handler) PostRecover(c *gin.Context) {
 	req.Phone = strings.TrimSpace(req.Phone)
 
 	ctx := c.Request.Context()
-	eventID, settled, err := lookupInvite(ctx, h.DB, req.Code)
+	tx, err := h.DB.Begin(ctx)
+	if err != nil {
+		respondErr(c, 500, "begin join")
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	eventID, settled, err := lookupInvite(ctx, tx, req.Code)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			respondErr(c, http.StatusNotFound, "recovery failed")
@@ -145,7 +174,7 @@ func (h *Handler) PostRecover(c *gin.Context) {
 	}
 
 	var guestID int64
-	err = h.DB.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		SELECT g.id
 		  FROM guests g
 		  JOIN event_members em ON em.guest_id = g.id
@@ -161,8 +190,12 @@ func (h *Handler) PostRecover(c *gin.Context) {
 		return
 	}
 
-	if _, err := IssueSession(ctx, h.DB, c, Subject{GuestID: guestID}); err != nil {
+	if _, err := IssueSession(ctx, tx, c, Subject{GuestID: guestID}); err != nil {
 		respondErr(c, http.StatusInternalServerError, "issue session")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		respondErr(c, 500, "commit recovery")
 		return
 	}
 	c.JSON(http.StatusOK, recoverResponse{GuestID: guestID, EventID: eventID})
@@ -184,7 +217,7 @@ func (h *Handler) PostLogout(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func lookupInvite(ctx context.Context, db *pgxpool.Pool, code string) (int64, bool, error) {
+func lookupInvite(ctx context.Context, db database.Store, code string) (int64, bool, error) {
 	var (
 		eventID int64
 		settled bool
@@ -193,11 +226,11 @@ func lookupInvite(ctx context.Context, db *pgxpool.Pool, code string) (int64, bo
 		SELECT e.id, e.settled
 		  FROM invitations i
 		  JOIN events      e ON e.id = i.event_id
-		 WHERE i.code = $1`, code).Scan(&eventID, &settled)
+		 WHERE i.code = $1 FOR UPDATE OF e`, code).Scan(&eventID, &settled)
 	return eventID, settled, err
 }
 
-func upsertGuest(ctx context.Context, db *pgxpool.Pool, email, phone, name string) (int64, error) {
+func upsertGuest(ctx context.Context, db database.Store, email, phone, name string) (int64, error) {
 	var id int64
 	err := db.QueryRow(ctx, `
 		INSERT INTO guests (email, phone, name) VALUES ($1, $2, $3)
@@ -206,23 +239,48 @@ func upsertGuest(ctx context.Context, db *pgxpool.Pool, email, phone, name strin
 	return id, err
 }
 
-func joinDisplayName(name string) string {
-	if name == "" {
-		return "Guest"
-	}
-	return name
-}
-
 // attachGuestToEvent inserts a membership row if one does not exist for this
 // guest on this event, defaulting to 'member' role. If the guest is already
 // attached (perhaps as a co-organizer promoted by the host), the existing
 // role is returned unchanged.
-func attachGuestToEvent(ctx context.Context, db *pgxpool.Pool, eventID, guestID int64, display string) (string, error) {
+func attachGuestToEvent(ctx context.Context, db database.Store, eventID, guestID int64, display string, tags []string, note string) (string, error) {
+	if tags == nil {
+		tags = []string{}
+	}
 	var role string
 	err := db.QueryRow(ctx, `
-		INSERT INTO event_members (event_id, guest_id, display, role)
-		VALUES ($1, $2, $3, 'member')
+		INSERT INTO event_members (event_id, guest_id, display, role, tags, note)
+		VALUES ($1, $2, $3, 'member', $4, $5)
 		ON CONFLICT (event_id, guest_id) DO UPDATE SET display = event_members.display
-		RETURNING role::text`, eventID, guestID, display).Scan(&role)
+		RETURNING role::text`, eventID, guestID, display, tags, note).Scan(&role)
 	return role, err
+}
+
+func validPhone(phone string) bool {
+	if phone == "" {
+		return false
+	}
+	for _, r := range phone {
+		if r < '0' || r > '9' || !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
+}
+func validateJoinConditions(ctx context.Context, db database.Store, id int64, tags []string) error {
+	seen := map[string]bool{}
+	for _, tag := range tags {
+		if seen[tag] {
+			return errors.New("duplicate condition")
+		}
+		seen[tag] = true
+		var exists bool
+		if err := db.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM event_cond_tags WHERE event_id=$1 AND label=$2)", id, tag).Scan(&exists); err != nil {
+			return err
+		}
+		if !exists {
+			return errors.New("unknown condition")
+		}
+	}
+	return nil
 }

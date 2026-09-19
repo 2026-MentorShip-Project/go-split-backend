@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sort"
+
+	"go-split-backend/internal/database"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"go-split-backend/internal/auth"
 )
@@ -22,6 +24,7 @@ func (h *Handler) registerTemplateRoutes(r gin.IRouter) {
 type templateItem struct {
 	Label       string          `json:"label"`
 	Description string          `json:"description"`
+	Soon        bool            `json:"soon"`
 	Content     json.RawMessage `json:"content" swaggertype:"object"`
 }
 
@@ -49,7 +52,7 @@ func (h *Handler) GetTemplates(c *gin.Context) {
 	c.JSON(http.StatusOK, templatesResponse{Templates: rows})
 }
 
-func loadAllTemplates(ctx context.Context, db *pgxpool.Pool) ([]templateItem, error) {
+func loadAllTemplates(ctx context.Context, db database.Store) ([]templateItem, error) {
 	rows, err := db.Query(ctx, `
 		SELECT label, description, content::text
 		  FROM templates
@@ -71,5 +74,20 @@ func loadAllTemplates(ctx context.Context, db *pgxpool.Pool) ([]templateItem, er
 		it.Content = json.RawMessage(content)
 		out = append(out, it)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for label := range allowedTemplates {
+		found := false
+		for _, it := range out {
+			if it.Label == label {
+				found = true
+			}
+		}
+		if !found {
+			out = append(out, templateItem{Label: label, Soon: label != "自訂", Content: json.RawMessage(`{"item_tags":[],"cond_tags":[],"rules":[]}`)})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
+	return out, nil
 }

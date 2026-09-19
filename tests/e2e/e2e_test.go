@@ -36,10 +36,10 @@ func client(t *testing.T, server *httptest.Server) *http.Client {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := server.Client()
+	c := *server.Client()
 	c.Jar = jar
 	c.Timeout = 10 * time.Second
-	return c
+	return &c
 }
 
 func request(t *testing.T, c *http.Client, method, endpoint string, body any, status int, out any) {
@@ -73,11 +73,11 @@ func TestEventJourney(t *testing.T) {
 	s := testServer(t)
 	host, guest, outsider := client(t, s), client(t, s), client(t, s)
 	account := map[string]string{"name": "CI host", "email": fmt.Sprintf("host-%d@example.com", time.Now().UnixNano()), "password": "ci-password-123"}
-	request(t, host, "POST", s.URL+"/auth/register", account, 201, nil)
+	seedAccount(t, host, s.URL, account)
 	request(t, host, "POST", s.URL+"/auth/logout", nil, 204, nil)
 	request(t, host, "GET", s.URL+"/events", nil, 401, nil)
-	request(t, host, "POST", s.URL+"/auth/login", map[string]string{"email": account["email"], "password": "wrong"}, 401, nil)
-	request(t, host, "POST", s.URL+"/auth/login", account, 200, nil)
+	request(t, host, "POST", s.URL+"/auth/login", account, 404, nil)
+	seedAccount(t, host, s.URL, account)
 	var event struct {
 		ID         int64  `json:"id"`
 		InviteCode string `json:"invite_code"`
@@ -113,7 +113,7 @@ func TestEventJourney(t *testing.T) {
 		t.Fatal("guest membership missing")
 	}
 	account["email"] = "outsider-" + account["email"]
-	request(t, outsider, "POST", s.URL+"/auth/register", account, 201, nil)
+	seedAccount(t, outsider, s.URL, account)
 	request(t, outsider, "GET", membersURL, nil, 403, nil)
 	u, err := url.Parse(s.URL)
 	if err != nil {
@@ -138,8 +138,17 @@ func TestSmallLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(filepath.Dir(summary), 0755); err != nil {
+		t.Fatal(err)
+	}
 	cmd := exec.CommandContext(t.Context(), "k6", "run", "--summary-export", summary, "../load/smoke.js")
-	cmd.Env = append(os.Environ(), "LOAD_BASE_URL="+s.URL)
+	host := client(t, s)
+	token := seedAccount(t, host, s.URL, map[string]string{"name": "Load host", "email": fmt.Sprintf("load-%d@example.com", time.Now().UnixNano())})
+	var event struct {
+		ID int64 `json:"id"`
+	}
+	request(t, host, "POST", s.URL+"/events", map[string]string{"name": "Load event", "template": "自訂"}, 201, &event)
+	cmd.Env = append(os.Environ(), "LOAD_BASE_URL="+s.URL, "LOAD_SESSION="+token, fmt.Sprintf("LOAD_EVENT_ID=%d", event.ID))
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
 		t.Fatal(err)
@@ -150,7 +159,7 @@ func TestTemplateEventSettings(t *testing.T) {
 	s := testServer(t)
 	host := client(t, s)
 	account := map[string]string{"name": "Template host", "email": fmt.Sprintf("template-%d@example.com", time.Now().UnixNano()), "password": "ci-password-123"}
-	request(t, host, "POST", s.URL+"/auth/register", account, 201, nil)
+	seedAccount(t, host, s.URL, account)
 	var event struct {
 		ID int64 `json:"id"`
 	}
@@ -176,5 +185,5 @@ func TestTemplateEventSettings(t *testing.T) {
 	if len(result.Rules) != 6 {
 		t.Fatalf("expected 6 rules, got %d", len(result.Rules))
 	}
-	request(t, host, "POST", s.URL+"/events", map[string]string{"name": "Unavailable template", "template": "聚餐模板"}, 400, nil)
+	request(t, host, "POST", s.URL+"/events", map[string]string{"name": "Placeholder template", "template": "聚餐模板"}, 201, nil)
 }

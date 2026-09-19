@@ -6,9 +6,10 @@ import (
 	"net/http"
 	"strconv"
 
+	"go-split-backend/internal/database"
+
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
@@ -19,7 +20,7 @@ const (
 
 // RequireSession returns a middleware that rejects any request without a
 // valid session cookie and attaches the resolved Subject to the context.
-func RequireSession(db *pgxpool.Pool) gin.HandlerFunc {
+func RequireSession(db database.Store) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sub, err := LookupSession(c.Request.Context(), db, c)
 		if err != nil {
@@ -50,7 +51,7 @@ func CurrentSubject(c *gin.Context) Subject {
 // the event named by the :id path param and aborts with 403 unless that role
 // is in allowed. Must run after RequireSession. Stashes the resolved role
 // for downstream handlers to read via EventRole.
-func RequireEventRole(db *pgxpool.Pool, allowed ...string) gin.HandlerFunc {
+func RequireEventRole(db database.Store, allowed ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		eventID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil || eventID <= 0 {
@@ -105,7 +106,7 @@ func EventMemberID(c *gin.Context) int64 {
 	return id
 }
 
-func lookupEventRole(ctx context.Context, db *pgxpool.Pool, eventID int64, sub Subject) (int64, string, error) {
+func lookupEventRole(ctx context.Context, db database.Store, eventID int64, sub Subject) (int64, string, error) {
 	var (
 		memberID int64
 		role     string

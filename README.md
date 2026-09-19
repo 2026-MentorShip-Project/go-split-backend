@@ -13,9 +13,9 @@ Table of contents
 
 
 ## Prd
-- link to prd: https://github.com/Go-Split/Go-Split/blob/main/%E7%BE%A4%E9%AB%94%E6%B4%BB%E5%8B%95%E5%88%86%E5%B8%B3%E5%B7%A5%E5%85%B7_PRD_v0.3.md
-
-* [example](https://go-split.github.io/Go-Split/)
+- Engine specification: https://github.com/Go-Split/Go-Split/blob/main/PRD/SPEC-ENGINE-v1-1.md
+- Product PRD: https://github.com/Go-Split/Go-Split/blob/main/PRD/PRD-v0-16.md
+- Demo site: https://go-split.github.io/Go-Split/
 
 ## Prerequisite
 
@@ -74,3 +74,17 @@ event membership role. Migration `0008_accounts.sql` renames the existing table,
 columns, constraints, indexes, and ID sequence while preserving data. The server
 applies pending migrations at startup. Deploy this version with old server
 instances stopped, because earlier versions query the previous names.
+
+### PRD v0.16 / engine v1.1 alignment
+
+See [the gap audit, API changes and verification](docs/prd-alignment.md).
+This is a breaking release: money is whole NT dollars, settlement freezes an
+immutable snapshot, each event has exactly one host, and transfers use that
+host as the hub. Password login, payment tracking and post-creation template
+replacement are removed. Read the migration requirements before deploying:
+legacy fractional-dollar values, incompatible host/manual-split data and
+already-closed events need explicit reconciliation.
+
+The shared browser calculation engine builds from `cmd/splitengine-wasm`;
+setup and usage are documented in the audit. The frontend must integrate it
+and update its API requests independently.

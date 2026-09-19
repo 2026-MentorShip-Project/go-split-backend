@@ -3,6 +3,7 @@
 package events
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -80,9 +81,14 @@ func TestCreateEventTemplateTransaction(t *testing.T) {
 			t.Fatalf("custom %s: %d, %v", table, count, err)
 		}
 	}
-	if _, err := createEventTx(ctx, db, accountID, createEventRequest{Name: "missing", Template: "聚餐模板"}); !errors.Is(err, errTemplateUnavailable) {
+	if _, err := createEventTx(ctx, db, accountID, createEventRequest{Name: "missing", Template: "聚餐模板"}); err != nil {
 		t.Fatalf("missing template: %v", err)
 	}
+	defer func() {
+		if _, err := SeedTemplates(context.Background(), db); err != nil {
+			t.Error(err)
+		}
+	}()
 	// A duplicate label causes settings insertion to fail after event insertion.
 	if _, err := db.Exec(ctx, `UPDATE templates SET content=jsonb_set(content,'{item_tags}','["duplicate","duplicate"]') WHERE label='烤肉/露營模板'`); err != nil {
 		t.Fatal(err)
@@ -91,7 +97,7 @@ func TestCreateEventTemplateTransaction(t *testing.T) {
 		t.Fatal("expected duplicate label failure")
 	}
 	var count int
-	if err := db.QueryRow(ctx, `SELECT count(*) FROM events WHERE name IN ('missing','rollback')`).Scan(&count); err != nil || count != 0 {
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM events WHERE name = 'rollback'`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("failed creation left events: %d, %v", count, err)
 	}
 }

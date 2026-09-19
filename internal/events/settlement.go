@@ -2,243 +2,163 @@ package events
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"net/http"
-	"strconv"
+	"go-split-backend/internal/auth"
+	"go-split-backend/internal/database"
+	"go-split-backend/internal/splitengine"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-
-	"go-split-backend/internal/auth"
 )
 
 func (h *Handler) registerSettlementRoutes(g *gin.RouterGroup) {
-	writeRole := auth.RequireEventRole(h.DB, "host", "co")
-	hostOnly := auth.RequireEventRole(h.DB, "host")
+	host := auth.RequireEventRole(h.DB, "host")
+	g.POST("/:id/settle", host, h.PostSettle)
+	g.POST("/:id/archive", host, h.PostArchive)
+}
 
-	g.PUT("/:id/transfers/:from/:to/paid", writeRole, h.PutTransferPaid)
-	g.DELETE("/:id/transfers/:from/:to/paid", writeRole, h.DeleteTransferPaid)
-	g.POST("/:id/settle", hostOnly, h.PostSettle)
-	g.POST("/:id/archive", hostOnly, h.PostArchive)
+type settlementSnapshot struct {
+	EngineVersion string                 `json:"engine_version"`
+	Strategy      string                 `json:"strategy"`
+	HubID         int64                  `json:"hub_id"`
+	SplitOrder    []int64                `json:"split_order"`
+	CreatedAt     time.Time              `json:"created_at"`
+	Event         eventDetailResponse    `json:"event"`
+	ItemTags      []string               `json:"item_tags"`
+	CondTags      []string               `json:"cond_tags"`
+	Rules         []ruleDTO              `json:"rules"`
+	Engine        engineResult           `json:"engine"`
+	Transfers     []splitengine.Transfer `json:"transfers"`
+}
+
+func loadSnapshot(ctx context.Context, db database.Store, id int64) (*settlementSnapshot, error) {
+	var raw []byte
+	if err := db.QueryRow(ctx, "SELECT settlement FROM events WHERE id=$1", id).Scan(&raw); err != nil {
+		return nil, err
+	}
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var s settlementSnapshot
+	err := json.Unmarshal(raw, &s)
+	return &s, err
+}
+func eventHub(ctx context.Context, db database.Store, id int64) (int64, error) {
+	var hub int64
+	var count int
+	err := db.QueryRow(ctx, `SELECT count(*), COALESCE(min(m.id),0) FROM event_members m JOIN events e ON e.id=m.event_id WHERE m.event_id=$1 AND m.role='host' AND m.account_id=e.account_id`, id).Scan(&count, &hub)
+	if err != nil {
+		return 0, err
+	}
+	if count != 1 {
+		return 0, errors.New("expected exactly one host")
+	}
+	return hub, nil
 }
 
 // PostSettle godoc
-// @Summary     Settle an event
-// @Description Host-only. Marks the event settled so transfer payments can be recorded.
-// @Tags        settlement
-// @Produce     json
-// @Param       id path int true "Event id"
-// @Success     204
-// @Failure     401 {object} errorResponse
-// @Failure     403 {object} errorResponse
-// @Failure     404 {object} errorResponse
-// @Router      /events/{id}/settle [post]
+// @Summary Validate and permanently freeze an event
+// @Description Host-only. Locks edits and invitation use; stores all inputs and results atomically.
+// @Tags settlement
+// @Produce json
+// @Param id path int true "Event id"
+// @Success 204
+// @Failure 422 {object} validationResponse
+// @Router /events/{id}/settle [post]
 func (h *Handler) PostSettle(c *gin.Context) {
-	tag, err := h.DB.Exec(c.Request.Context(),
-		`UPDATE events SET settled = TRUE WHERE id = $1`, eventIDFromPath(c))
-	if err != nil {
-		respondErr(c, http.StatusInternalServerError, "settle event")
-		return
-	}
-	if tag.RowsAffected() == 0 {
-		respondErr(c, http.StatusNotFound, "event not found")
-		return
-	}
-	c.Status(http.StatusNoContent)
-}
-
-// PutTransferPaid godoc
-// @Summary     Mark a transfer as paid
-// @Description Host or co-organizer. The event must be settled; before
-// @Description settle the transfer set is not stable and paid state has no
-// @Description meaning. Idempotent.
-// @Tags        settlement
-// @Produce     json
-// @Param       id   path int true "Event id"
-// @Param       from path int true "From member id"
-// @Param       to   path int true "To member id"
-// @Success     204
-// @Failure     400  {object} errorResponse
-// @Failure     401  {object} errorResponse
-// @Failure     403  {object} errorResponse
-// @Failure     409  {object} errorResponse
-// @Router      /events/{id}/transfers/{from}/{to}/paid [put]
-func (h *Handler) PutTransferPaid(c *gin.Context) {
-	eventID, fromID, toID, ok := parseTransferPath(c)
-	if !ok {
-		return
-	}
 	ctx := c.Request.Context()
-	if err := requireSettled(ctx, h.DB, eventID); err != nil {
-		respondSettlementErr(c, err)
-		return
-	}
-	if err := ensureMembersInEvent(ctx, h.DB, eventID, fromID, toID); err != nil {
-		respondSettlementErr(c, err)
-		return
-	}
-	_, err := h.DB.Exec(ctx, `
-		INSERT INTO transfer_payments (event_id, from_member_id, to_member_id)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (event_id, from_member_id, to_member_id) DO NOTHING`,
-		eventID, fromID, toID)
+	id := eventIDFromPath(c)
+	r, err := computeEventShares(ctx, h.DB, id)
 	if err != nil {
-		respondErr(c, http.StatusInternalServerError, "mark transfer paid")
+		respondErr(c, 500, "compute settlement")
 		return
 	}
-	c.Status(http.StatusNoContent)
-}
-
-// DeleteTransferPaid godoc
-// @Summary     Undo a transfer's paid mark
-// @Description Host or co-organizer. Requires settled. Idempotent.
-// @Tags        settlement
-// @Produce     json
-// @Param       id   path int true "Event id"
-// @Param       from path int true "From member id"
-// @Param       to   path int true "To member id"
-// @Success     204
-// @Failure     400  {object} errorResponse
-// @Failure     401  {object} errorResponse
-// @Failure     403  {object} errorResponse
-// @Failure     409  {object} errorResponse
-// @Router      /events/{id}/transfers/{from}/{to}/paid [delete]
-func (h *Handler) DeleteTransferPaid(c *gin.Context) {
-	eventID, fromID, toID, ok := parseTransferPath(c)
-	if !ok {
+	if issues := splitIssues(r); len(issues) > 0 {
+		c.JSON(422, validationResponse{Error: "invalid splits", Details: issues})
 		return
 	}
-	ctx := c.Request.Context()
-	if err := requireSettled(ctx, h.DB, eventID); err != nil {
-		respondSettlementErr(c, err)
-		return
-	}
-	_, err := h.DB.Exec(ctx,
-		`DELETE FROM transfer_payments WHERE event_id = $1 AND from_member_id = $2 AND to_member_id = $3`,
-		eventID, fromID, toID)
+	hub, err := eventHub(ctx, h.DB, id)
 	if err != nil {
-		respondErr(c, http.StatusInternalServerError, "clear transfer paid")
+		respondErr(c, 409, err.Error())
 		return
 	}
-	c.Status(http.StatusNoContent)
+	ts, err := splitengine.HubTransfers(r.Shares, hub)
+	if err != nil {
+		respondErr(c, 422, err.Error())
+		return
+	}
+	base, err := loadEventBase(ctx, h.DB, id)
+	if err != nil {
+		respondErr(c, 500, "load event")
+		return
+	}
+	base.Members, err = loadMembers(ctx, h.DB, id, auth.Subject{})
+	if err != nil {
+		respondErr(c, 500, "load members")
+		return
+	}
+	base.Items, err = loadItems(ctx, h.DB, id, 0)
+	if err != nil {
+		respondErr(c, 500, "load items")
+		return
+	}
+	base.Total = r.Shares.GrandTotal
+	base.Settled = true
+	base.InviteCode = ""
+	itemTags, err := loadTagLabels(ctx, h.DB, id, "event_item_tags")
+	if err != nil {
+		respondErr(c, 500, "load item tags")
+		return
+	}
+	condTags, err := loadTagLabels(ctx, h.DB, id, "event_cond_tags")
+	if err != nil {
+		respondErr(c, 500, "load condition tags")
+		return
+	}
+	rules, err := loadRules(ctx, h.DB, id)
+	if err != nil {
+		respondErr(c, 500, "load rules")
+		return
+	}
+	order := []int64{}
+	for _, m := range r.Members {
+		order = append(order, m.ID)
+	}
+	s := settlementSnapshot{splitengine.Version, "hub", hub, order, time.Now().UTC(), base, itemTags, condTags, rules, r, ts}
+	raw, err := json.Marshal(s)
+	if err != nil {
+		respondErr(c, 500, "encode settlement")
+		return
+	}
+	if _, err = h.DB.Exec(ctx, "UPDATE events SET settled=TRUE,settlement=$2 WHERE id=$1", id, raw); err != nil {
+		respondErr(c, 500, "save settlement")
+		return
+	}
+	c.Status(204)
 }
 
 // PostArchive godoc
-// @Summary     Archive a settled event
-// @Description Host-only. Flips archived=true; the event and every child
-// @Description row becomes read-only. Requires the event to already be
-// @Description settled. Idempotent on an already-archived event.
-// @Tags        settlement
-// @Produce     json
-// @Param       id path int true "Event id"
-// @Success     204
-// @Failure     401 {object} errorResponse
-// @Failure     403 {object} errorResponse
-// @Failure     409 {object} errorResponse
-// @Router      /events/{id}/archive [post]
+// @Summary Archive a settled event without payment prerequisites
+// @Tags settlement
+// @Param id path int true "Event id"
+// @Success 204
+// @Router /events/{id}/archive [post]
 func (h *Handler) PostArchive(c *gin.Context) {
-	eventID := eventIDFromPath(c)
 	ctx := c.Request.Context()
-	if err := requireSettled(ctx, h.DB, eventID); err != nil {
-		respondSettlementErr(c, err)
-		return
-	}
-	if _, err := h.DB.Exec(ctx, `UPDATE events SET archived = TRUE WHERE id = $1`, eventID); err != nil {
-		respondErr(c, http.StatusInternalServerError, "archive event")
-		return
-	}
-	c.Status(http.StatusNoContent)
-}
-
-var (
-	errEventNotFound    = errors.New("event not found")
-	errEventNotSettled  = errors.New("event is not settled")
-	errMemberNotInEvent = errors.New("member is not in this event")
-	errTransferSelfLoop = errors.New("from and to must be different members")
-)
-
-func requireSettled(ctx context.Context, db *pgxpool.Pool, eventID int64) error {
+	id := eventIDFromPath(c)
 	var settled bool
-	err := db.QueryRow(ctx, `SELECT settled FROM events WHERE id = $1`, eventID).Scan(&settled)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return errEventNotFound
-	}
-	if err != nil {
-		return err
+	if err := h.DB.QueryRow(ctx, "SELECT settled FROM events WHERE id=$1", id).Scan(&settled); err != nil {
+		respondErr(c, 500, "load event")
+		return
 	}
 	if !settled {
-		return errEventNotSettled
+		respondErr(c, 409, "event is not settled")
+		return
 	}
-	return nil
-}
-
-func ensureMembersInEvent(ctx context.Context, db *pgxpool.Pool, eventID, fromID, toID int64) error {
-	var count int
-	err := db.QueryRow(ctx,
-		`SELECT COUNT(*) FROM event_members WHERE event_id = $1 AND id IN ($2, $3)`,
-		eventID, fromID, toID).Scan(&count)
-	if err != nil {
-		return err
+	if _, err := h.DB.Exec(ctx, "UPDATE events SET archived=TRUE WHERE id=$1", id); err != nil {
+		respondErr(c, 500, "archive event")
+		return
 	}
-	if count != 2 {
-		return errMemberNotInEvent
-	}
-	return nil
-}
-
-func parseTransferPath(c *gin.Context) (eventID, fromID, toID int64, ok bool) {
-	eventID = eventIDFromPath(c)
-	from, err := strconv.ParseInt(c.Param("from"), 10, 64)
-	if err != nil || from <= 0 {
-		respondErr(c, http.StatusBadRequest, "invalid from member id")
-		return 0, 0, 0, false
-	}
-	to, err := strconv.ParseInt(c.Param("to"), 10, 64)
-	if err != nil || to <= 0 {
-		respondErr(c, http.StatusBadRequest, "invalid to member id")
-		return 0, 0, 0, false
-	}
-	if from == to {
-		respondErr(c, http.StatusBadRequest, errTransferSelfLoop.Error())
-		return 0, 0, 0, false
-	}
-	return eventID, from, to, true
-}
-
-func respondSettlementErr(c *gin.Context, err error) {
-	switch {
-	case errors.Is(err, errEventNotFound):
-		respondErr(c, http.StatusNotFound, "event not found")
-	case errors.Is(err, errEventNotSettled):
-		respondErr(c, http.StatusConflict, "event is not settled")
-	case errors.Is(err, errMemberNotInEvent):
-		respondErr(c, http.StatusNotFound, "member is not in this event")
-	default:
-		respondErr(c, http.StatusInternalServerError, "settlement operation failed")
-	}
-}
-
-// loadPaidPairs returns the set of paid (from,to) member pairs for the
-// event, keyed as "from>to" to match the frontend's transfer key format.
-func loadPaidPairs(ctx context.Context, db *pgxpool.Pool, eventID int64) (map[string]bool, error) {
-	rows, err := db.Query(ctx,
-		`SELECT from_member_id, to_member_id FROM transfer_payments WHERE event_id = $1`, eventID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := map[string]bool{}
-	for rows.Next() {
-		var from, to int64
-		if err := rows.Scan(&from, &to); err != nil {
-			return nil, err
-		}
-		out[transferKey(from, to)] = true
-	}
-	return out, rows.Err()
-}
-
-func transferKey(from, to int64) string {
-	return strconv.FormatInt(from, 10) + ">" + strconv.FormatInt(to, 10)
+	c.Status(204)
 }

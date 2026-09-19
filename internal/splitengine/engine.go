@@ -1,218 +1,143 @@
-// Package splitengine turns members, expense details, and per-event rules
-// into per-detail shares, per-member totals, and settlement transfer lists.
-// Pure Go, no I/O: hand it typed slices and it returns typed structs.
+// Package splitengine provides the pure, shared R1 splitting engine.
 package splitengine
 
 import (
+	"encoding/json"
+	"errors"
 	"math"
-	"sort"
+	"math/big"
+)
+
+const Version = "1.1.0"
+
+type Validity string
+
+const (
+	OK             Validity = "ok"
+	NoParticipant  Validity = "no-participant"
+	CustomMismatch Validity = "custom-mismatch"
+	CustomOverflow Validity = "custom-overflow"
 )
 
 type Member struct {
-	ID   int64
-	Tags []string
+	ID   int64    `json:"id"`
+	Tags []string `json:"cond_tags"`
+}
+type Group struct {
+	Conds  []string `json:"conds,omitempty"`
+	Mode   string   `json:"mode"`
+	Weight float64  `json:"weight"`
 }
 
-type Group struct {
-	Conds  []string
-	Mode   string
-	Weight float64
+// UnmarshalJSON preserves explicit zero while defaulting omitted weights to one.
+func (g *Group) UnmarshalJSON(data []byte) error {
+	type plain Group
+	value := plain{Weight: 1}
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*g = Group(value)
+	return nil
 }
 
 type Rule struct {
-	Tag    string
-	Groups []Group
-	Rest   *Group
+	Tag    string  `json:"item_tag"`
+	Groups []Group `json:"groups"`
+	Rest   *Group  `json:"rest,omitempty"`
 }
-
 type Detail struct {
-	ID           int64
-	AmountCents  int64
-	Tag          string
-	CustomShares map[int64]int64
+	ID              int64           `json:"id"`
+	Amount          int64           `json:"amount"`
+	Tag             string          `json:"item_tag"`
+	ManualMemberIDs []int64         `json:"manual_member_ids"`
+	CustomShares    map[int64]int64 `json:"custom_amounts"`
 }
-
 type Item struct {
-	ID      int64
-	PayerID int64
-	Details []Detail
+	ID      int64    `json:"id"`
+	PayerID int64    `json:"payer_id"`
+	Details []Detail `json:"details"`
 }
-
+type Trace struct {
+	Kind           string   `json:"kind"`
+	RuleItemTag    string   `json:"rule_item_tag,omitempty"`
+	CondSetIndex   *int     `json:"cond_set_index,omitempty"`
+	HitCondTags    []string `json:"hit_cond_tags,omitempty"`
+	Weight         float64  `json:"weight,omitempty"`
+	TotalWeight    float64  `json:"total_weight,omitempty"`
+	UnitPrice      float64  `json:"unit_price,omitempty"`
+	RemainderBonus int64    `json:"remainder_bonus"`
+	Value          int64    `json:"value,omitempty"`
+}
+type Share struct {
+	MemberID int64 `json:"member_id"`
+	Amount   int64 `json:"amount"`
+	Trace    Trace `json:"trace"`
+}
+type SplitResult struct {
+	Shares      []Share  `json:"shares"`
+	Excluded    []Share  `json:"excluded"`
+	TotalWeight float64  `json:"total_weight"`
+	UnitPrice   float64  `json:"unit_price"`
+	Validity    Validity `json:"validity"`
+	Diff        int64    `json:"diff,omitempty"`
+}
 type DetailShares struct {
-	ItemID      int64
-	DetailID    int64
-	AmountCents int64
-	Shares      map[int64]int64
+	ItemID   int64
+	DetailID int64
+	Amount   int64
+	Shares   map[int64]int64
+	Result   SplitResult
 }
-
 type MemberShares struct {
-	OwedCents int64
-	PaidCents int64
-	NetCents  int64
+	Owed int64
+	Paid int64
+	Net  int64
 }
-
 type Shares struct {
-	GrandTotalCents int64
-	PerDetail       []DetailShares
-	PerMember       map[int64]MemberShares
+	GrandTotal int64
+	PerDetail  []DetailShares
+	PerMember  map[int64]MemberShares
 }
-
 type Transfer struct {
-	FromID      int64
-	ToID        int64
-	AmountCents int64
+	FromID int64 `json:"from_id"`
+	ToID   int64 `json:"to_id"`
+	Amount int64 `json:"amount"`
 }
 
-type PairLine struct {
-	ItemID      int64
-	DetailID    int64
-	FromID      int64
-	ToID        int64
-	AmountCents int64
-}
-
-// Compute returns the whole share breakdown in one pass. Members not
-// referenced by any item still appear in PerMember with zero totals.
-func Compute(members []Member, items []Item, rules []Rule) Shares {
-	ruleByTag := map[string]Rule{}
+// ResolveWeight distinguishes unmatched rules from absent rules.
+func ResolveWeight(tag string, member Member, rules []Rule) (float64, Trace) {
 	for _, r := range rules {
-		ruleByTag[r.Tag] = r
-	}
-	orderedIDs := sortedMemberIDs(members)
-
-	perMember := map[int64]*MemberShares{}
-	for _, m := range members {
-		perMember[m.ID] = &MemberShares{}
-	}
-
-	perDetail := []DetailShares{}
-	var grand int64
-	for _, it := range items {
-		for _, d := range it.Details {
-			shares := splitDetail(members, orderedIDs, d, ruleByTag[d.Tag])
-			perDetail = append(perDetail, DetailShares{
-				ItemID:      it.ID,
-				DetailID:    d.ID,
-				AmountCents: d.AmountCents,
-				Shares:      shares,
-			})
-			for id, cents := range shares {
-				if ms, ok := perMember[id]; ok {
-					ms.OwedCents += cents
-				}
+		if tag == "" || r.Tag != tag {
+			continue
+		}
+		for i, g := range r.Groups {
+			if !allTagsPresent(member.Tags, g.Conds) {
+				continue
 			}
-			grand += d.AmountCents
-			if pm, ok := perMember[it.PayerID]; ok {
-				pm.PaidCents += d.AmountCents
+			trace := Trace{Kind: "weighted", RuleItemTag: tag, CondSetIndex: &i, HitCondTags: append([]string(nil), g.Conds...), Weight: g.Weight}
+			if g.Mode == "exclude" || g.Weight == 0 {
+				trace.Kind = "excluded"
+				trace.Weight = 0
+				return 0, trace
 			}
+			return g.Weight, trace
 		}
+		w := 1.0
+		if r.Rest != nil {
+			if r.Rest.Mode == "exclude" || r.Rest.Weight == 0 {
+				return 0, Trace{Kind: "excluded-rest", RuleItemTag: tag}
+			}
+			w = r.Rest.Weight
+		}
+		return w, Trace{Kind: "rest", RuleItemTag: tag, Weight: w}
 	}
-	out := Shares{
-		GrandTotalCents: grand,
-		PerDetail:       perDetail,
-		PerMember:       map[int64]MemberShares{},
-	}
-	for id, ms := range perMember {
-		ms.NetCents = ms.PaidCents - ms.OwedCents
-		out.PerMember[id] = *ms
-	}
-	return out
+	return 1, Trace{Kind: "no-rule", Weight: 1}
 }
-
-func splitDetail(members []Member, orderedIDs []int64, d Detail, rule Rule) map[int64]int64 {
-	shares := map[int64]int64{}
-	weights := map[int64]float64{}
-	customTotal := int64(0)
-
-	for _, m := range members {
-		if v, ok := d.CustomShares[m.ID]; ok {
-			shares[m.ID] = v
-			customTotal += v
-			continue
-		}
-		weights[m.ID] = weightFor(m, rule)
-	}
-
-	remainder := d.AmountCents - customTotal
-	if remainder < 0 {
-		remainder = 0
-	}
-
-	var totalWeight float64
-	for _, w := range weights {
-		if w > 0 {
-			totalWeight += w
-		}
-	}
-	if totalWeight == 0 {
-		for id := range weights {
-			shares[id] = 0
-		}
-		return shares
-	}
-
-	floors := map[int64]int64{}
-	var floorSum int64
-	for id, w := range weights {
-		if w <= 0 {
-			shares[id] = 0
-			continue
-		}
-		exact := float64(remainder) * w / totalWeight
-		f := int64(math.Floor(exact))
-		floors[id] = f
-		floorSum += f
-	}
-	leftover := remainder - floorSum
-
-	eligibleOrder := make([]int64, 0, len(floors))
-	for _, id := range orderedIDs {
-		if _, ok := floors[id]; ok {
-			eligibleOrder = append(eligibleOrder, id)
-		}
-	}
-	for i := int64(0); i < leftover && len(eligibleOrder) > 0; i++ {
-		floors[eligibleOrder[int(i)%len(eligibleOrder)]]++
-	}
-	for id, cents := range floors {
-		shares[id] = cents
-	}
-	return shares
-}
-
-func weightFor(m Member, r Rule) float64 {
-	for _, g := range r.Groups {
-		if !allTagsPresent(m.Tags, g.Conds) {
-			continue
-		}
-		if g.Mode == "exclude" {
-			return 0
-		}
-		if g.Weight <= 0 {
-			return 1
-		}
-		return g.Weight
-	}
-	if r.Rest == nil {
-		return 1
-	}
-	if r.Rest.Mode == "exclude" {
-		return 0
-	}
-	if r.Rest.Weight <= 0 {
-		return 1
-	}
-	return r.Rest.Weight
-}
-
-func allTagsPresent(memberTags, groupConds []string) bool {
-	if len(groupConds) == 0 {
-		return false
-	}
-	for _, c := range groupConds {
+func allTagsPresent(tags, conds []string) bool {
+	for _, c := range conds {
 		found := false
-		for _, mt := range memberTags {
-			if mt == c {
+		for _, v := range tags {
+			if v == c {
 				found = true
 				break
 			}
@@ -223,122 +148,176 @@ func allTagsPresent(memberTags, groupConds []string) bool {
 	}
 	return true
 }
-
-func sortedMemberIDs(members []Member) []int64 {
-	ids := make([]int64, len(members))
-	for i, m := range members {
-		ids[i] = m.ID
+func contains(ids []int64, id int64) bool {
+	for _, v := range ids {
+		if v == id {
+			return true
+		}
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	return ids
+	return false
 }
 
-// Transfers greedy-matches debtors to creditors, largest first. Returns at
-// most N-1 transfers for N members.
-func Transfers(s Shares) []Transfer {
-	type entry struct {
-		id  int64
-		val int64
+// SplitDetail assumes validated inputs. Invalid business splits are returned as
+// validity values, never repaired by altering fixed custom amounts.
+func SplitDetail(d Detail, members []Member, rules []Rule, order []int64, minUnit int64) SplitResult {
+	out := SplitResult{Shares: []Share{}, Excluded: []Share{}, Validity: OK}
+	ruled := false
+	for _, r := range rules {
+		if d.Tag != "" && r.Tag == d.Tag {
+			ruled = true
+			break
+		}
 	}
-	ids := sortedMemberIDsFromMap(s.PerMember)
+	weights := map[int64]int64{}
+	fixed := map[int64]bool{}
+	var fixedSum, totalWeight int64
+	for _, m := range members {
+		if !ruled && d.ManualMemberIDs != nil && !contains(d.ManualMemberIDs, m.ID) {
+			continue
+		}
+		w, tr := ResolveWeight(d.Tag, m, rules)
+		if w <= 0 {
+			out.Excluded = append(out.Excluded, Share{MemberID: m.ID, Trace: tr})
+			continue
+		}
+		sh := Share{MemberID: m.ID, Trace: tr}
+		if v, ok := d.CustomShares[m.ID]; ok && !ruled {
+			sh.Amount = v
+			sh.Trace = Trace{Kind: "custom", Value: v}
+			fixed[m.ID] = true
+			fixedSum += v
+		} else {
+			weights[m.ID] = int64(math.Round(w * 10))
+			totalWeight += weights[m.ID]
+		}
+		out.Shares = append(out.Shares, sh)
+	}
+	if len(out.Shares) == 0 {
+		out.Validity = NoParticipant
+		return out
+	}
+	out.TotalWeight = float64(totalWeight) / 10
+	switch {
+	case fixedSum > d.Amount:
+		out.Validity = CustomOverflow
+		out.Diff = fixedSum - d.Amount
+	case totalWeight == 0 && fixedSum != d.Amount:
+		out.Validity = CustomMismatch
+		out.Diff = d.Amount - fixedSum
+	}
+	if totalWeight == 0 || out.Validity != OK {
+		return out
+	}
+	remaining := d.Amount - fixedSum
+	out.UnitPrice = float64(remaining) / out.TotalWeight
+	if minUnit <= 0 {
+		minUnit = 1
+	}
+	settleAllocations(&out, weights, fixed, remaining, totalWeight, order, minUnit)
+	return out
+}
+func settleAllocations(out *SplitResult, weights map[int64]int64, fixed map[int64]bool, remaining, totalWeight int64, order []int64, minUnit int64) {
+	var allocated int64
+	index := map[int64]int{}
+	for i := range out.Shares {
+		sh := &out.Shares[i]
+		if fixed[sh.MemberID] {
+			continue
+		}
+		// Integer rational arithmetic prevents float-dependent remainder recipients.
+		numerator := new(big.Int).Mul(big.NewInt(remaining), big.NewInt(weights[sh.MemberID]))
+		denominator := new(big.Int).Mul(big.NewInt(totalWeight), big.NewInt(minUnit))
+		sh.Amount = new(big.Int).Quo(numerator, denominator).Int64() * minUnit
+		sh.Trace.TotalWeight = out.TotalWeight
+		sh.Trace.UnitPrice = out.UnitPrice
+		allocated += sh.Amount
+		index[sh.MemberID] = i
+	}
+	if order == nil {
+		for _, sh := range out.Shares {
+			order = append(order, sh.MemberID)
+		}
+	}
+	// Ignore stale/duplicate IDs and retain all eligible members deterministically.
+	eligible := []int64{}
+	for _, id := range order {
+		if _, ok := index[id]; ok && !contains(eligible, id) {
+			eligible = append(eligible, id)
+		}
+	}
+	for _, sh := range out.Shares {
+		if !fixed[sh.MemberID] && !contains(eligible, sh.MemberID) {
+			eligible = append(eligible, sh.MemberID)
+		}
+	}
+	left := remaining - allocated
+	for i := 0; left >= minUnit && len(eligible) > 0; i++ {
+		sh := &out.Shares[index[eligible[i%len(eligible)]]]
+		sh.Amount += minUnit
+		sh.Trace.RemainderBonus += minUnit
+		left -= minUnit
+	}
+}
+func Compute(members []Member, items []Item, rules []Rule) Shares {
+	out := Shares{PerDetail: []DetailShares{}, PerMember: map[int64]MemberShares{}}
+	for _, m := range members {
+		out.PerMember[m.ID] = MemberShares{}
+	}
+	for _, it := range items {
+		for _, d := range it.Details {
+			r := SplitDetail(d, members, rules, nil, 1)
+			ds := DetailShares{ItemID: it.ID, DetailID: d.ID, Amount: d.Amount, Shares: map[int64]int64{}, Result: r}
+			for _, sh := range r.Shares {
+				ds.Shares[sh.MemberID] = sh.Amount
+				ms := out.PerMember[sh.MemberID]
+				ms.Owed += sh.Amount
+				out.PerMember[sh.MemberID] = ms
+			}
+			out.PerDetail = append(out.PerDetail, ds)
+			out.GrandTotal += d.Amount
+			ms := out.PerMember[it.PayerID]
+			ms.Paid += d.Amount
+			out.PerMember[it.PayerID] = ms
+		}
+	}
+	for id, ms := range out.PerMember {
+		ms.Net = ms.Paid - ms.Owed
+		out.PerMember[id] = ms
+	}
+	return out
+}
 
-	var debtors, creditors []entry
+// HubTransfers requires a balanced set and an existing host.
+func HubTransfers(s Shares, hubID int64) ([]Transfer, error) {
+	if _, ok := s.PerMember[hubID]; !ok {
+		return nil, errors.New("host is not a member")
+	}
+	var sum int64
+	ids := []int64{}
+	for id, ms := range s.PerMember {
+		sum += ms.Net
+		ids = append(ids, id)
+	}
+	if sum != 0 {
+		return nil, errors.New("unbalanced settlement")
+	}
+	// Transfer ordering is independent of remainder ordering.
+	for i := 1; i < len(ids); i++ {
+		for j := i; j > 0 && ids[j] < ids[j-1]; j-- {
+			ids[j], ids[j-1] = ids[j-1], ids[j]
+		}
+	}
+	out := []Transfer{}
 	for _, id := range ids {
-		net := s.PerMember[id].NetCents
-		switch {
-		case net < 0:
-			debtors = append(debtors, entry{id: id, val: -net})
-		case net > 0:
-			creditors = append(creditors, entry{id: id, val: net})
-		}
-	}
-	sort.SliceStable(debtors, func(i, j int) bool { return debtors[i].val > debtors[j].val })
-	sort.SliceStable(creditors, func(i, j int) bool { return creditors[i].val > creditors[j].val })
-
-	transfers := []Transfer{}
-	di, ci := 0, 0
-	for di < len(debtors) && ci < len(creditors) {
-		amt := debtors[di].val
-		if creditors[ci].val < amt {
-			amt = creditors[ci].val
-		}
-		transfers = append(transfers, Transfer{
-			FromID:      debtors[di].id,
-			ToID:        creditors[ci].id,
-			AmountCents: amt,
-		})
-		debtors[di].val -= amt
-		creditors[ci].val -= amt
-		if debtors[di].val == 0 {
-			di++
-		}
-		if creditors[ci].val == 0 {
-			ci++
-		}
-	}
-	return transfers
-}
-
-// HubTransfers settles everyone through hubID. Positive-net members receive
-// from hub; negative-net members pay hub.
-func HubTransfers(s Shares, hubID int64) []Transfer {
-	transfers := []Transfer{}
-	for _, id := range sortedMemberIDsFromMap(s.PerMember) {
 		if id == hubID {
 			continue
 		}
-		net := s.PerMember[id].NetCents
-		switch {
-		case net > 0:
-			transfers = append(transfers, Transfer{FromID: hubID, ToID: id, AmountCents: net})
-		case net < 0:
-			transfers = append(transfers, Transfer{FromID: id, ToID: hubID, AmountCents: -net})
+		n := s.PerMember[id].Net
+		if n > 0 {
+			out = append(out, Transfer{hubID, id, n})
+		} else if n < 0 {
+			out = append(out, Transfer{id, hubID, -n})
 		}
 	}
-	return transfers
-}
-
-// PairBreakdown lists every detail that contributes to a direct debt
-// between aID and bID. A detail contributes only when one of the two paid
-// it and the other owes a nonzero share.
-func PairBreakdown(s Shares, items []Item, aID, bID int64) []PairLine {
-	byDetail := map[int64]DetailShares{}
-	for _, ds := range s.PerDetail {
-		byDetail[ds.DetailID] = ds
-	}
-	lines := []PairLine{}
-	for _, it := range items {
-		for _, d := range it.Details {
-			ds, ok := byDetail[d.ID]
-			if !ok {
-				continue
-			}
-			switch it.PayerID {
-			case aID:
-				if v := ds.Shares[bID]; v != 0 {
-					lines = append(lines, PairLine{
-						ItemID: it.ID, DetailID: d.ID,
-						FromID: bID, ToID: aID, AmountCents: v,
-					})
-				}
-			case bID:
-				if v := ds.Shares[aID]; v != 0 {
-					lines = append(lines, PairLine{
-						ItemID: it.ID, DetailID: d.ID,
-						FromID: aID, ToID: bID, AmountCents: v,
-					})
-				}
-			}
-		}
-	}
-	return lines
-}
-
-func sortedMemberIDsFromMap(m map[int64]MemberShares) []int64 {
-	ids := make([]int64, 0, len(m))
-	for id := range m {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	return ids
+	return out, nil
 }

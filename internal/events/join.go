@@ -6,9 +6,10 @@ import (
 	"net/http"
 	"strings"
 
+	"go-split-backend/internal/database"
+
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"go-split-backend/internal/auth"
 )
@@ -20,7 +21,10 @@ func (h *Handler) registerJoinRoutes(g *gin.RouterGroup) {
 }
 
 type joinRequest struct {
-	Code string `json:"code" binding:"required,min=1,max=32"`
+	Code     string   `json:"code" binding:"required,min=1,max=32"`
+	Name     string   `json:"name"`
+	CondTags []string `json:"cond_tags"`
+	Note     string   `json:"note"`
 }
 
 type joinResponse struct {
@@ -60,7 +64,13 @@ func (h *Handler) PostJoin(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	eventID, name, settled, ownerAccountID, err := lookupInvite(ctx, h.DB, req.Code)
+	tx, err := h.DB.Begin(ctx)
+	if err != nil {
+		respondErr(c, 500, "begin join")
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	eventID, name, settled, ownerAccountID, err := lookupInvite(ctx, tx, req.Code)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			respondErr(c, http.StatusNotFound, "invite code not found")
@@ -80,15 +90,40 @@ func (h *Handler) PostJoin(c *gin.Context) {
 		return
 	}
 
-	role, err := attachToEvent(ctx, h.DB, eventID, sub, displayNameFor(sub))
+	displayName := strings.TrimSpace(req.Name)
+	if displayName == "" {
+		if sub.IsAccount() {
+			err = tx.QueryRow(ctx, "SELECT name FROM accounts WHERE id=$1", sub.AccountID).Scan(&displayName)
+		} else {
+			err = tx.QueryRow(ctx, "SELECT COALESCE(name,'') FROM guests WHERE id=$1", sub.GuestID).Scan(&displayName)
+		}
+		if err != nil || displayName == "" {
+			respondErr(c, 400, "name required")
+			return
+		}
+	}
+	catalog, err := loadTagLabels(ctx, tx, eventID, "event_cond_tags")
+	if err != nil {
+		respondErr(c, 500, "load conditions")
+		return
+	}
+	if err = validateConditions(req.CondTags, catalog); err != nil {
+		respondErr(c, 400, err.Error())
+		return
+	}
+	role, err := attachToEvent(ctx, tx, eventID, sub, displayName, req.CondTags, req.Note)
 	if err != nil {
 		respondErr(c, http.StatusInternalServerError, "attach to event")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		respondErr(c, 500, "commit join")
 		return
 	}
 	c.JSON(http.StatusOK, joinResponse{EventID: eventID, Name: name, Role: role})
 }
 
-func lookupInvite(ctx context.Context, db *pgxpool.Pool, code string) (int64, string, bool, int64, error) {
+func lookupInvite(ctx context.Context, db database.Store, code string) (int64, string, bool, int64, error) {
 	var (
 		eventID        int64
 		name           string
@@ -99,11 +134,11 @@ func lookupInvite(ctx context.Context, db *pgxpool.Pool, code string) (int64, st
 		SELECT e.id, e.name, e.settled, e.account_id
 		  FROM invitations i
 		  JOIN events      e ON e.id = i.event_id
-		 WHERE i.code = $1`, code).Scan(&eventID, &name, &settled, &ownerAccountID)
+		 WHERE i.code = $1 FOR UPDATE OF e`, code).Scan(&eventID, &name, &settled, &ownerAccountID)
 	return eventID, name, settled, ownerAccountID, err
 }
 
-func attachToEvent(ctx context.Context, db *pgxpool.Pool, eventID int64, sub auth.Subject, display string) (string, error) {
+func attachToEvent(ctx context.Context, db database.Store, eventID int64, sub auth.Subject, display string, tags []string, note string) (string, error) {
 	var accountID, guestID any
 	var conflict string
 	switch {
@@ -117,21 +152,14 @@ func attachToEvent(ctx context.Context, db *pgxpool.Pool, eventID int64, sub aut
 		return "", errors.New("subject has neither account nor guest id")
 	}
 
+	if tags == nil {
+		tags = []string{}
+	}
 	var role string
 	err := db.QueryRow(ctx, `
-		INSERT INTO event_members (event_id, account_id, guest_id, display, role)
-		VALUES ($1, $2, $3, $4, 'member')
+		INSERT INTO event_members (event_id, account_id, guest_id, display, role,tags,note)
+		VALUES ($1, $2, $3, $4, 'member',$5,$6)
 		ON CONFLICT `+conflict+` DO UPDATE SET display = event_members.display
-		RETURNING role::text`, eventID, accountID, guestID, display).Scan(&role)
+		RETURNING role::text`, eventID, accountID, guestID, display, tags, note).Scan(&role)
 	return role, err
-}
-
-// displayNameFor is a placeholder that will be replaced when account/guest name
-// lookups land. For now it labels the row by subject type so QA can see
-// which side attached.
-func displayNameFor(sub auth.Subject) string {
-	if sub.IsAccount() {
-		return "account"
-	}
-	return "guest"
 }

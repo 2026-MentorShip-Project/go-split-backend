@@ -154,6 +154,8 @@ func TestPostGoogleRejectsBeforeTouchingDatabase(t *testing.T) {
 		{"not configured", &Handler{}, `{"id_token":"t"}`, http.StatusServiceUnavailable},
 		{"missing token", &Handler{Google: stubVerifier{}}, `{}`, http.StatusBadRequest},
 		{"invalid token", &Handler{Google: stubVerifier{err: ErrInvalidGoogleToken}}, `{"id_token":"t"}`, http.StatusUnauthorized},
+		{"unverified email", &Handler{Google: stubVerifier{err: ErrGoogleEmailUnverified}}, `{"id_token":"t"}`, http.StatusUnauthorized},
+		{"google timeout", &Handler{Google: stubVerifier{err: context.DeadlineExceeded}}, `{"id_token":"t"}`, http.StatusGatewayTimeout},
 		{"google unreachable", &Handler{Google: stubVerifier{err: errors.New("dial tcp")}}, `{"id_token":"t"}`, http.StatusBadGateway},
 	}
 	for _, tc := range cases {

@@ -6,15 +6,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"go-split-backend/internal/database"
+
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -31,6 +33,7 @@ type GoogleIdentity struct {
 // ErrInvalidGoogleToken means Google rejected the token or its claims do not
 // match this application.
 var ErrInvalidGoogleToken = errors.New("invalid google token")
+var ErrGoogleEmailUnverified = errors.New("google email is not verified")
 
 // GoogleVerifier checks a Google ID token and returns the identity it carries.
 type GoogleVerifier interface {
@@ -124,7 +127,10 @@ func (v *googleTokenInfoVerifier) checkClaims(info tokenInfo) (GoogleIdentity, e
 	if err != nil || time.Now().Unix() >= exp {
 		return GoogleIdentity{}, fmt.Errorf("%w: expired", ErrInvalidGoogleToken)
 	}
-	if info.Sub == "" || info.Email == "" || info.EmailVerified != "true" {
+	if info.EmailVerified != "true" {
+		return GoogleIdentity{}, fmt.Errorf("%w: %w", ErrInvalidGoogleToken, ErrGoogleEmailUnverified)
+	}
+	if info.Sub == "" || info.Email == "" {
 		return GoogleIdentity{}, fmt.Errorf("%w: email not verified", ErrInvalidGoogleToken)
 	}
 	return GoogleIdentity{Sub: info.Sub, Email: info.Email, Name: info.Name}, nil
@@ -163,6 +169,16 @@ func (h *Handler) PostGoogle(c *gin.Context) {
 	ctx := c.Request.Context()
 	identity, err := h.Google.Verify(ctx, req.IDToken)
 	if err != nil {
+		if errors.Is(err, ErrGoogleEmailUnverified) {
+			c.JSON(401, gin.H{"error": "google_email_unverified"})
+			return
+		}
+		var timeout net.Error
+		if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &timeout) && timeout.Timeout()) {
+			log.WithContext(ctx).WithError(err).Warn("google timeout")
+			c.JSON(504, gin.H{"error": "google_timeout"})
+			return
+		}
 		if errors.Is(err, ErrInvalidGoogleToken) {
 			log.WithContext(ctx).WithError(err).Info("reject google token")
 			respondErr(c, http.StatusUnauthorized, "invalid google token")
@@ -190,7 +206,7 @@ func (h *Handler) PostGoogle(c *gin.Context) {
 // upsertGoogleAccount finds the account by Google subject, otherwise links the
 // Google identity to an existing account with the same email, otherwise creates
 // a password-less account.
-func upsertGoogleAccount(ctx context.Context, db *pgxpool.Pool, id GoogleIdentity) (accountRow, error) {
+func upsertGoogleAccount(ctx context.Context, db database.Store, id GoogleIdentity) (accountRow, error) {
 	var h accountRow
 	err := db.QueryRow(ctx,
 		`SELECT id, name, email FROM accounts WHERE google_sub = $1`, id.Sub).

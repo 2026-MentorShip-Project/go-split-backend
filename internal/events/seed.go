@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"go-split-backend/internal/database"
 )
 
 //go:embed templates/*.json
@@ -71,7 +71,7 @@ func LoadEmbeddedTemplates() ([]templateFile, error) {
 // SeedTemplates upserts every embedded template into the templates table.
 // Idempotent: a re-run replaces content and description in place. Returns
 // the labels written in order.
-func SeedTemplates(ctx context.Context, db *pgxpool.Pool) ([]string, error) {
+func SeedTemplates(ctx context.Context, db database.Store) ([]string, error) {
 	tpls, err := LoadEmbeddedTemplates()
 	if err != nil {
 		return nil, err

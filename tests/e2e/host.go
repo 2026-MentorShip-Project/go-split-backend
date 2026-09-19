@@ -36,10 +36,7 @@ func testHostCohostMemberFlow(t *testing.T, s *httptest.Server) {
 	member1Account := account("CI member 1", "member1")
 	member2Account := account("CI member 2", "member2")
 
-	request(t, host, "POST", s.URL+"/auth/register", hostAccount, 201, nil)
-	request(t, cohost, "POST", s.URL+"/auth/register", cohostAccount, 201, nil)
-	request(t, member1, "POST", s.URL+"/auth/register", member1Account, 201, nil)
-	request(t, member2, "POST", s.URL+"/auth/register", member2Account, 201, nil)
+	seedAccount(t, host, s.URL, hostAccount)
 
 	var event struct {
 		ID         int64  `json:"id"`
@@ -53,10 +50,12 @@ func testHostCohostMemberFlow(t *testing.T, s *httptest.Server) {
 		t.Fatal("event response missing id or invite code")
 	}
 
-	join := map[string]string{"code": event.InviteCode}
-	request(t, cohost, "POST", s.URL+"/events/join", join, 200, nil)
-	request(t, member1, "POST", s.URL+"/events/join", join, 200, nil)
-	request(t, member2, "POST", s.URL+"/events/join", join, 200, nil)
+	for _, who := range []struct {
+		client  *http.Client
+		account map[string]string
+	}{{cohost, cohostAccount}, {member1, member1Account}, {member2, member2Account}} {
+		request(t, who.client, "POST", s.URL+"/auth/join", map[string]string{"code": event.InviteCode, "name": who.account["name"], "email": who.account["email"], "phone": "0912345678"}, 200, nil)
+	}
 
 	cohostID := currentMemberID(t, cohost, s.URL, event.ID)
 	member1ID := currentMemberID(t, member1, s.URL, event.ID)
@@ -80,9 +79,9 @@ func testHostCohostMemberFlow(t *testing.T, s *httptest.Server) {
 	request(t, cohost, "POST", fmt.Sprintf("%s/events/%d/items", s.URL, event.ID), map[string]any{
 		"payer_member_id": cohostID,
 		"details": []map[string]any{{
-			"name":         "Dinner",
-			"amount_cents": 1200,
-			"tag":          "shared-cost",
+			"name":   "Dinner",
+			"amount": 1200,
+			"tag":    "shared-cost",
 		}},
 	}, 201, nil)
 	request(t, host, "POST", fmt.Sprintf("%s/events/%d/settle", s.URL, event.ID), nil, 204, nil)
@@ -92,29 +91,29 @@ func testHostCohostMemberFlow(t *testing.T, s *httptest.Server) {
 	assertMyRole(t, member2, s.URL, event.ID, "member")
 
 	var shares struct {
-		GrandTotalCents int64 `json:"grand_total_cents"`
+		GrandTotal int64 `json:"grand_total"`
 	}
 	request(t, host, "GET", fmt.Sprintf("%s/events/%d/shares", s.URL, event.ID), nil, 200, &shares)
-	if shares.GrandTotalCents != 1200 {
-		t.Fatalf("grand total = %d, want 1200", shares.GrandTotalCents)
+	if shares.GrandTotal != 1200 {
+		t.Fatalf("grand total = %d, want 1200", shares.GrandTotal)
 	}
 	var transfers struct {
 		Transfers []struct {
 			FromID int64 `json:"from_id"`
 			ToID   int64 `json:"to_id"`
-			Paid   bool  `json:"paid"`
 		} `json:"transfers"`
 	}
 	request(t, host, "GET", fmt.Sprintf("%s/events/%d/transfers", s.URL, event.ID), nil, 200, &transfers)
 	if len(transfers.Transfers) == 0 {
 		t.Fatal("settlement produced no transfers")
 	}
-	transfer := transfers.Transfers[0]
-	request(t, host, "PUT", fmt.Sprintf("%s/events/%d/transfers/%d/%d/paid", s.URL, event.ID, transfer.FromID, transfer.ToID), nil, 204, nil)
-	request(t, host, "GET", fmt.Sprintf("%s/events/%d/transfers", s.URL, event.ID), nil, 200, &transfers)
-	if !transfers.Transfers[0].Paid {
-		t.Fatal("settled transfer was not marked paid")
+	hid := currentMemberID(t, host, s.URL, event.ID)
+	for _, transfer := range transfers.Transfers {
+		if transfer.FromID != hid && transfer.ToID != hid {
+			t.Fatal("transfer bypasses host")
+		}
 	}
+	request(t, host, "POST", fmt.Sprintf("%s/events/%d/archive", s.URL, event.ID), nil, 204, nil)
 
 	var members struct {
 		Members []struct {

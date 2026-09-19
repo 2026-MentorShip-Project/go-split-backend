@@ -58,12 +58,37 @@ func TestAccountsMigrationPreservesIdentity(t *testing.T) {
  INSERT INTO events (host_id,name) VALUES (1,'Existing event');
  INSERT INTO event_members (event_id,host_id,display,role) VALUES (1,1,'Existing','host');
  INSERT INTO sessions (token,host_id,expires_at) VALUES ('existing-token',1,NOW()+INTERVAL '1 day');
+ INSERT INTO items(event_id,payer_member_id,author_member_id) VALUES(1,1,1);
+ INSERT INTO item_details(item_id,ordinal,name,amount_cents,custom_shares) VALUES(1,0,'legacy',12501,'{"1":5000}');
  `); err != nil {
+		t.Fatal(err)
+	}
+
+	// Unsafe upgrades must leave the legacy amount untouched, then succeed after reconciliation.
+	if err := Migrate(ctx, db); err == nil {
+		t.Fatal("fractional dollars were silently rounded")
+	}
+	var legacy int64
+	if err := db.QueryRow(ctx, "SELECT amount_cents FROM item_details WHERE id=1").Scan(&legacy); err != nil || legacy != 12501 {
+		t.Fatalf("failed migration changed legacy money: %d %v", legacy, err)
+	}
+	if _, err := db.Exec(ctx, "UPDATE item_details SET amount_cents=12500; UPDATE events SET settled=true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, db); err == nil {
+		t.Fatal("legacy settled history was fabricated")
+	}
+	if _, err := db.Exec(ctx, "UPDATE events SET settled=false"); err != nil {
 		t.Fatal(err)
 	}
 	if err := Migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
+	var amount, custom int64
+	if err := db.QueryRow(ctx, "SELECT amount,(custom_shares->>'1')::bigint FROM item_details WHERE id=1").Scan(&amount, &custom); err != nil || amount != 125 || custom != 50 {
+		t.Fatalf("whole-dollar conversion: %d %d %v", amount, custom, err)
+	}
+
 	if err := Migrate(ctx, db); err != nil {
 		t.Fatalf("repeat migration: %v", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
@@ -23,12 +24,15 @@ func (h *Handler) registerMemberRoutes(g *gin.RouterGroup) {
 }
 
 type memberDTO struct {
-	ID      int64    `json:"id"`
-	Display string   `json:"display"`
-	Role    string   `json:"role"`
-	Tags    []string `json:"tags"`
-	Guest   bool     `json:"guest"`
-	You     bool     `json:"you,omitempty"`
+	ID         int64    `json:"id"`
+	Display    string   `json:"display"`
+	Role       string   `json:"role"`
+	Tags       []string `json:"tags"`
+	Virtual    bool     `json:"virtual"`
+	Note       string   `json:"note"`
+	SplitOrder int64    `json:"split_order"`
+	Guest      bool     `json:"guest"`
+	You        bool     `json:"you,omitempty"`
 }
 
 type membersResponse struct {
@@ -53,33 +57,12 @@ type roleResponse struct {
 // @Failure     403 {object} errorResponse
 // @Router      /events/{id}/members [get]
 func (h *Handler) GetMembers(c *gin.Context) {
-	eventID := eventIDFromPath(c)
-	sub := auth.CurrentSubject(c)
-
-	rows, err := h.DB.Query(c.Request.Context(), `
-		SELECT id, display, role::text, tags,
-		       (guest_id IS NOT NULL) AS guest,
-		       COALESCE(($1 <> 0 AND account_id = $1) OR ($2 <> 0 AND guest_id = $2), false) AS you
-		  FROM event_members
-		 WHERE event_id = $3
-		 ORDER BY id`,
-		sub.AccountID, sub.GuestID, eventID)
+	ms, err := loadMembers(c.Request.Context(), h.DB, eventIDFromPath(c), auth.CurrentSubject(c))
 	if err != nil {
-		respondErr(c, http.StatusInternalServerError, "list members")
+		respondErr(c, 500, "load members")
 		return
 	}
-	defer rows.Close()
-
-	out := []memberDTO{}
-	for rows.Next() {
-		var m memberDTO
-		if err := rows.Scan(&m.ID, &m.Display, &m.Role, &m.Tags, &m.Guest, &m.You); err != nil {
-			respondErr(c, http.StatusInternalServerError, "scan member")
-			return
-		}
-		out = append(out, m)
-	}
-	c.JSON(http.StatusOK, membersResponse{Members: out})
+	c.JSON(200, membersResponse{Members: ms})
 }
 
 type createMemberRequest struct {
@@ -91,7 +74,7 @@ type createMemberRequest struct {
 // PostMember godoc
 // @Summary     Add a placeholder member to an event
 // @Description Host-only. Creates a seat-holder row with no account or guest
-// @Description identity yet; use invite codes to bind a real session.
+// @Description identity. Virtual members are independent seats, not invitations.
 // @Tags        members
 // @Accept      json
 // @Produce     json
@@ -109,18 +92,32 @@ func (h *Handler) PostMember(c *gin.Context) {
 		return
 	}
 	eventID := eventIDFromPath(c)
+	catalog, err := loadTagLabels(c.Request.Context(), h.DB, eventID, "event_cond_tags")
+	if err != nil {
+		respondErr(c, 500, "load conditions")
+		return
+	}
+	if err = validateConditions(req.Tags, catalog); err != nil {
+		respondErr(c, 400, err.Error())
+		return
+	}
+	if strings.TrimSpace(req.Display) == "" {
+		respondErr(c, 400, "name is required")
+		return
+	}
+
 	tags := req.Tags
 	if tags == nil {
 		tags = []string{}
 	}
 
 	var m memberDTO
-	err := h.DB.QueryRow(c.Request.Context(), `
+	err = h.DB.QueryRow(c.Request.Context(), `
 		INSERT INTO event_members (event_id, display, role, tags)
 		VALUES ($1, $2, $3::event_role, $4)
-		RETURNING id, display, role::text, tags, (guest_id IS NOT NULL) AS guest`,
+		RETURNING id, display, role::text, tags, virtual, note, split_order, (guest_id IS NOT NULL) AS guest`,
 		eventID, req.Display, req.Role, tags,
-	).Scan(&m.ID, &m.Display, &m.Role, &m.Tags, &m.Guest)
+	).Scan(&m.ID, &m.Display, &m.Role, &m.Tags, &m.Virtual, &m.Note, &m.SplitOrder, &m.Guest)
 	if err != nil {
 		respondErr(c, http.StatusInternalServerError, "create member")
 		return
@@ -156,6 +153,31 @@ func (h *Handler) PatchMember(c *gin.Context) {
 		return
 	}
 	eventID := eventIDFromPath(c)
+	var oldRole string
+	if err := h.DB.QueryRow(c.Request.Context(), "SELECT role::text FROM event_members WHERE event_id=$1 AND id=$2", eventID, c.Param("member_id")).Scan(&oldRole); err != nil {
+		respondErr(c, 404, "member not found")
+		return
+	}
+	if req.Role != nil && (*req.Role == "host" && oldRole != "host" || oldRole == "host" && *req.Role != "host") {
+		respondErr(c, 409, "each event has exactly one fixed account-backed host")
+		return
+	}
+	if req.Display != nil && (strings.TrimSpace(*req.Display) == "" || len(*req.Display) > 64) {
+		respondErr(c, 400, "invalid display name")
+		return
+	}
+	if req.Tags != nil {
+		catalog, err := loadTagLabels(c.Request.Context(), h.DB, eventID, "event_cond_tags")
+		if err != nil {
+			respondErr(c, 500, "load conditions")
+			return
+		}
+		if err = validateConditions(*req.Tags, catalog); err != nil {
+			respondErr(c, 400, err.Error())
+			return
+		}
+	}
+
 	memberID, ok := memberIDFromPath(c)
 	if !ok {
 		respondErr(c, http.StatusBadRequest, "invalid member id")
@@ -184,9 +206,9 @@ func (h *Handler) PatchMember(c *gin.Context) {
 		       role    = COALESCE($2::event_role, role),
 		       tags    = COALESCE($3, tags)
 		 WHERE id = $4 AND event_id = $5
-	 RETURNING id, display, role::text, tags, (guest_id IS NOT NULL) AS guest`,
+	 RETURNING id, display, role::text, tags, virtual, note, split_order, (guest_id IS NOT NULL) AS guest`,
 		displayArg, roleArg, tagsArg, memberID, eventID,
-	).Scan(&m.ID, &m.Display, &m.Role, &m.Tags, &m.Guest)
+	).Scan(&m.ID, &m.Display, &m.Role, &m.Tags, &m.Virtual, &m.Note, &m.SplitOrder, &m.Guest)
 	if errors.Is(err, pgx.ErrNoRows) {
 		respondErr(c, http.StatusNotFound, "member not found")
 		return
@@ -255,6 +277,15 @@ func (h *Handler) DeleteMember(c *gin.Context) {
 		}
 	}
 
+	r, err := computeEventShares(ctx, h.DB, eventID)
+	if err != nil {
+		respondErr(c, 500, "compute member shares")
+		return
+	}
+	if r.Shares.PerMember[memberID].Owed != 0 {
+		respondErr(c, 409, "member has expense shares")
+		return
+	}
 	var itemCount int
 	if err := tx.QueryRow(ctx, `
 		SELECT COUNT(*) FROM items
