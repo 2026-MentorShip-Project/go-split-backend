@@ -29,6 +29,7 @@ func main() {
 		}
 		return string(body)
 	})
+	js.Global().Set("goSplitEngineVersion", splitengine.Version)
 	js.Global().Set("goSplitDetail", split)
 	select {}
 }
