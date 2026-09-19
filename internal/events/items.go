@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go-split-backend/internal/database"
+	"go-split-backend/internal/splitengine"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
@@ -39,14 +40,15 @@ type itemDTO struct {
 }
 
 type detailDTO struct {
-	ID              int64            `json:"id"`
-	Ordinal         int              `json:"ordinal"`
-	Name            string           `json:"name"`
-	Amount          int64            `json:"amount"`
-	Tag             *string          `json:"tag"`
-	Note            string           `json:"note"`
-	CustomShares    map[string]int64 `json:"custom_amounts"`
-	ManualMemberIDs []int64          `json:"manual_member_ids"`
+	Allocation      *splitengine.SplitResult `json:"allocation,omitempty"`
+	ID              int64                    `json:"id"`
+	Ordinal         int                      `json:"ordinal"`
+	Name            string                   `json:"name"`
+	Amount          int64                    `json:"amount"`
+	Tag             *string                  `json:"tag"`
+	Note            string                   `json:"note"`
+	CustomShares    map[string]int64         `json:"custom_amounts"`
+	ManualMemberIDs []int64                  `json:"manual_member_ids"`
 }
 
 type itemsResponse struct {
@@ -178,7 +180,8 @@ func (h *Handler) GetItems(c *gin.Context) {
 }
 
 // GetItem godoc
-// @Summary     Get one item with its details
+// @Summary     Get one item with saved inputs and computed detail allocations
+// @Description allocation contains calculated shares, exclusions and validity; custom_amounts contains only manual overrides. Non-hosts see their own allocations until archive.
 // @Tags        items
 // @Produce     json
 // @Param       id      path int true "Event id"
@@ -202,6 +205,10 @@ func (h *Handler) GetItem(c *gin.Context) {
 	}
 	if len(items) == 0 {
 		respondErr(c, http.StatusNotFound, "item not found")
+		return
+	}
+	if err := h.populateItemAllocation(c, &items[0]); err != nil {
+		respondErr(c, 500, "compute item allocation")
 		return
 	}
 	c.JSON(http.StatusOK, items[0])
