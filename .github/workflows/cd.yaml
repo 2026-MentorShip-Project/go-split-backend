@@ -6,12 +6,18 @@ permissions:
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_engine:
+        description: 'Publish npm engine only (select a matching engine-vX.Y.Z tag)'
+        type: boolean
+        default: false
   push:
     branches:
       - 'main'
     tags:
       - '**'
     paths:
+      - packages/split-engine/**
       - cmd/**
       - internal/**
       - .github/workflows/**
@@ -32,6 +38,8 @@ env:
 
 jobs:
   deploy:
+    # Engine-only releases must not migrate databases or deploy Cloud Run.
+    if: ${{ !startsWith(github.ref, 'refs/tags/engine-v') && !inputs.publish_engine }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -154,3 +162,79 @@ jobs:
           service: ${{ env.CLOUD_RUN_SERVICE }}
           region: ${{ env.GCP_REGION }}
           image: "${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPO_NAME }}/go-backend:${{ github.sha }}"
+
+  engine-package:
+    name: Build and verify npm engine
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Validate engine release tag
+        if: startsWith(github.ref, 'refs/tags/engine-v') || inputs.publish_engine
+        working-directory: packages/split-engine
+        run: npm run verify-release
+      - name: Test native engine
+        run: go test -race ./internal/splitengine
+      - name: Build, test, and pack npm library
+        working-directory: packages/split-engine
+        run: |
+          mkdir -p packed
+          npm pack --pack-destination packed
+          node scripts/test-package.mjs packed/*.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-split-engine-${{ github.sha }}
+          path: packages/split-engine/packed/*.tgz
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-engine:
+    name: Publish npm engine release
+    needs: engine-package
+    if: startsWith(github.ref, 'refs/tags/engine-v') || inputs.publish_engine
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: npm-split-engine-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-split-engine-${{ github.sha }}
+          path: packed
+      - name: Check if this immutable version is already published
+        id: release
+        run: node packages/split-engine/scripts/publish-state.mjs
+      - name: Publish tested tarball to npm
+        if: steps.release.outputs.exists != 'true'
+        env:
+          # Optional for first publication; prefer npm trusted publishing (OIDC).
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/engine-npmrc
+        run: |
+          set -euo pipefail
+          trap 'rm -f "$NPM_CONFIG_USERCONFIG"' EXIT
+          if [ -n "$NODE_AUTH_TOKEN" ]; then
+            printf '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}\n' > "$NPM_CONFIG_USERCONFIG"
+          else
+            : > "$NPM_CONFIG_USERCONFIG"
+            unset NODE_AUTH_TOKEN
+          fi
+          npm publish packed/*.tgz --access public --provenance --ignore-scripts --registry=https://registry.npmjs.org/

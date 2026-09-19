@@ -88,3 +88,7 @@ already-closed events need explicit reconciliation.
 The shared browser calculation engine builds from `cmd/splitengine-wasm`;
 setup and usage are documented in the audit. The frontend must integrate it
 and update its API requests independently.
+
+The importable npm package lives in [`packages/split-engine`](packages/split-engine).
+See [npm engine releases](docs/npm-engine-release.md) for CD publishing setup
+and frontend installation.

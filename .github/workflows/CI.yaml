@@ -31,6 +31,25 @@ jobs:
       - name: Race tests
         run: go test -count=1 -race ./...
 
+  npm-engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Build and test installed npm package
+        working-directory: packages/split-engine
+        run: |
+          mkdir -p packed
+          npm pack --pack-destination packed
+          node scripts/test-package.mjs packed/*.tgz
+
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
