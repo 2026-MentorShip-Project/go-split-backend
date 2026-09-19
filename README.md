@@ -88,3 +88,5 @@ already-closed events need explicit reconciliation.
 The shared browser calculation engine builds from `cmd/splitengine-wasm`;
 setup and usage are documented in the audit. The frontend must integrate it
 and update its API requests independently.
+
+See the [frontend API guide](docs/frontend-api-guide.md) for settlement screen endpoints, computed item allocations, date-free events, shared-link member binding, and browser session troubleshooting.
