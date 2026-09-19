@@ -5,193 +5,116 @@ import (
 	"testing"
 )
 
-func mk(id int64, tags ...string) Member {
-	return Member{ID: id, Tags: tags}
-}
-
-func detail(id, amount int64, tag string) Detail {
-	return Detail{ID: id, AmountCents: amount, Tag: tag}
-}
-
-// PRD F2 golden case: 1300 元, A-tag members weight 2, B-tag members weight 3.
-// Expected per-person: A each 200, B each 300.
-func TestCompute_PRDGoldenExample(t *testing.T) {
-	members := []Member{
-		mk(1, "A"), mk(2, "A"),
-		mk(3, "B"), mk(4, "B"), mk(5, "B"),
-	}
-	rule := Rule{
-		Tag: "T",
-		Groups: []Group{
-			{Conds: []string{"A"}, Mode: "weight", Weight: 2},
-			{Conds: []string{"B"}, Mode: "weight", Weight: 3},
-		},
-	}
-	items := []Item{{ID: 100, PayerID: 1, Details: []Detail{detail(1000, 1300, "T")}}}
-
-	got := Compute(members, items, []Rule{rule})
-
-	want := map[int64]int64{1: 200, 2: 200, 3: 300, 4: 300, 5: 300}
-	for id, w := range want {
-		if s := got.PerDetail[0].Shares[id]; s != w {
-			t.Errorf("member %d: got %d, want %d", id, s, w)
-		}
-	}
-	if got.GrandTotalCents != 1300 {
-		t.Errorf("grand total: got %d, want 1300", got.GrandTotalCents)
-	}
-}
-
-// PRD F3 mechanism 1: 101 with three equal-weight members. Floors 33 each;
-// leftover 2 goes to the first two members in id order.
-func TestCompute_RoundingRemainderInIDOrder(t *testing.T) {
-	members := []Member{mk(1), mk(2), mk(3)}
-	items := []Item{{ID: 1, PayerID: 1, Details: []Detail{detail(1, 101, "")}}}
-	got := Compute(members, items, nil)
-	want := map[int64]int64{1: 34, 2: 34, 3: 33}
-	if !reflect.DeepEqual(got.PerDetail[0].Shares, want) {
-		t.Errorf("shares: got %v, want %v", got.PerDetail[0].Shares, want)
-	}
-}
-
-// PRD F3 mechanism 2: 300 with A=150 custom, B and C split the remainder equally.
-func TestCompute_CustomShareOverride(t *testing.T) {
-	members := []Member{mk(1), mk(2), mk(3)}
-	items := []Item{{ID: 1, PayerID: 1, Details: []Detail{{
-		ID: 1, AmountCents: 300, CustomShares: map[int64]int64{1: 150},
-	}}}}
-	got := Compute(members, items, nil)
-	want := map[int64]int64{1: 150, 2: 75, 3: 75}
-	if !reflect.DeepEqual(got.PerDetail[0].Shares, want) {
-		t.Errorf("shares: got %v, want %v", got.PerDetail[0].Shares, want)
-	}
-}
-
-// PRD F2 divide-by-zero guard: everyone excluded → all shares 0, no panic.
-func TestCompute_AllExcluded(t *testing.T) {
-	members := []Member{mk(1, "veg"), mk(2, "veg")}
-	rule := Rule{Tag: "meat", Groups: []Group{{Conds: []string{"veg"}, Mode: "exclude"}}}
-	items := []Item{{ID: 1, PayerID: 1, Details: []Detail{detail(1, 1000, "meat")}}}
-	got := Compute(members, items, []Rule{rule})
-	for id, cents := range got.PerDetail[0].Shares {
-		if cents != 0 {
-			t.Errorf("member %d: got %d, want 0", id, cents)
+func TestRules(t *testing.T) {
+	r := []Rule{{Tag: "transport", Groups: []Group{{Conds: []string{"A", "B"}, Mode: "weight", Weight: 2}, {Conds: []string{"A"}, Mode: "weight", Weight: 0}}, Rest: &Group{Mode: "exclude"}}}
+	cases := []struct {
+		tag    string
+		tags   []string
+		weight float64
+		kind   string
+	}{{"transport", []string{"A", "B", "C"}, 2, "weighted"}, {"transport", []string{"A"}, 0, "excluded"}, {"transport", nil, 0, "excluded-rest"}, {"", nil, 1, "no-rule"}, {"unknown", nil, 1, "no-rule"}}
+	for _, c := range cases {
+		w, tr := ResolveWeight(c.tag, Member{ID: 1, Tags: c.tags}, r)
+		if w != c.weight || tr.Kind != c.kind {
+			t.Fatalf("%+v: %v %+v", c, w, tr)
 		}
 	}
 }
-
-// A rule's `rest` weight applies when no group matched.
-func TestCompute_RestWeightApplies(t *testing.T) {
-	members := []Member{mk(1, "vip"), mk(2), mk(3)}
-	rest := Group{Mode: "weight", Weight: 1}
-	rule := Rule{
-		Tag:    "t",
-		Groups: []Group{{Conds: []string{"vip"}, Mode: "weight", Weight: 2}},
-		Rest:   &rest,
+func TestSplitAcceptance(t *testing.T) {
+	ms := []Member{{ID: 3}, {ID: 2}, {ID: 1}}
+	cases := []struct {
+		name  string
+		d     Detail
+		rules []Rule
+		want  []int64
+		valid Validity
+		diff  int64
+	}{
+		{"F3 order", Detail{Amount: 101}, nil, []int64{34, 34, 33}, OK, 0},
+		{"custom fixed", Detail{Amount: 101, CustomShares: map[int64]int64{3: 20}}, nil, []int64{20, 41, 40}, OK, 0},
+		{"manual subset", Detail{Amount: 101, ManualMemberIDs: []int64{1, 3}}, nil, []int64{51, 50}, OK, 0},
+		{"empty manual", Detail{Amount: 101, ManualMemberIDs: []int64{}}, nil, []int64{}, NoParticipant, 0},
+		{"overflow", Detail{Amount: 300, CustomShares: map[int64]int64{3: 350}}, nil, []int64{350, 0, 0}, CustomOverflow, 50},
+		{"mismatch", Detail{Amount: 300, CustomShares: map[int64]int64{3: 100, 2: 100, 1: 50}}, nil, []int64{100, 100, 50}, CustomMismatch, 50},
+		{"all fixed", Detail{Amount: 300, CustomShares: map[int64]int64{3: 100, 2: 100, 1: 100}}, nil, []int64{100, 100, 100}, OK, 0},
+		{"rules ignore manual", Detail{Amount: 300, Tag: "t", ManualMemberIDs: []int64{}, CustomShares: map[int64]int64{3: 350}}, []Rule{{Tag: "t"}}, []int64{100, 100, 100}, OK, 0},
+		{"rest excludes", Detail{Amount: 300, Tag: "t"}, []Rule{{Tag: "t", Rest: &Group{Mode: "exclude"}}}, []int64{}, NoParticipant, 0},
 	}
-	items := []Item{{ID: 1, PayerID: 1, Details: []Detail{detail(1, 400, "t")}}}
-	got := Compute(members, items, []Rule{rule})
-	// total weight = 2 + 1 + 1 = 4, per unit = 100
-	want := map[int64]int64{1: 200, 2: 100, 3: 100}
-	if !reflect.DeepEqual(got.PerDetail[0].Shares, want) {
-		t.Errorf("shares: got %v, want %v", got.PerDetail[0].Shares, want)
-	}
-}
-
-// A `rest: exclude` on the transport rule leaves only members who match a
-// group, mirroring PRD's outdoor template rule for 交通費.
-func TestCompute_RestExcludeKeepsOnlyMatched(t *testing.T) {
-	members := []Member{mk(1, "car"), mk(2)} // 1 needs a ride, 2 goes on their own
-	restEx := Group{Mode: "exclude"}
-	rule := Rule{
-		Tag:    "transport",
-		Groups: []Group{{Conds: []string{"car"}, Mode: "weight", Weight: 1}},
-		Rest:   &restEx,
-	}
-	items := []Item{{ID: 1, PayerID: 1, Details: []Detail{detail(1, 500, "transport")}}}
-	got := Compute(members, items, []Rule{rule})
-	want := map[int64]int64{1: 500, 2: 0}
-	if !reflect.DeepEqual(got.PerDetail[0].Shares, want) {
-		t.Errorf("shares: got %v, want %v", got.PerDetail[0].Shares, want)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := SplitDetail(c.d, ms, c.rules, nil, 1)
+			amounts := []int64{}
+			for _, s := range got.Shares {
+				amounts = append(amounts, s.Amount)
+			}
+			if !reflect.DeepEqual(amounts, c.want) || got.Validity != c.valid || got.Diff != c.diff {
+				t.Fatalf("got %+v amounts %v", got, amounts)
+			}
+		})
 	}
 }
-
-// Two-detail example combines owed and paid across members.
-func TestCompute_PerMemberNetAcrossDetails(t *testing.T) {
-	members := []Member{mk(1), mk(2), mk(3)}
-	// 300 paid by 1, 300 paid by 2, no rules → 100 each per detail.
-	items := []Item{
-		{ID: 1, PayerID: 1, Details: []Detail{detail(1, 300, "")}},
-		{ID: 2, PayerID: 2, Details: []Detail{detail(2, 300, "")}},
-	}
-	got := Compute(members, items, nil)
-	if got.PerMember[1].NetCents != 100 { // paid 300, owed 200 (100 + 100)
-		t.Errorf("member 1 net: got %d, want 100", got.PerMember[1].NetCents)
-	}
-	if got.PerMember[2].NetCents != 100 {
-		t.Errorf("member 2 net: got %d, want 100", got.PerMember[2].NetCents)
-	}
-	if got.PerMember[3].NetCents != -200 { // paid 0, owed 200
-		t.Errorf("member 3 net: got %d, want -200", got.PerMember[3].NetCents)
+func TestOutdoor(t *testing.T) {
+	ms := []Member{{1, []string{"adult", "driver"}}, {2, []string{"adult", "ride"}}, {3, []string{"adult", "veg", "self"}}, {4, []string{"child", "ride"}}}
+	rules := []Rule{{Tag: "meat", Groups: []Group{{Conds: []string{"veg"}, Mode: "exclude"}, {Conds: []string{"child"}, Mode: "weight", Weight: .5}}}, {Tag: "transport", Groups: []Group{{Conds: []string{"self"}, Mode: "exclude"}, {Conds: []string{"ride"}, Mode: "weight", Weight: 1}}, Rest: &Group{Mode: "exclude"}}, {Tag: "alcohol", Groups: []Group{{Conds: []string{"driver"}, Mode: "exclude"}, {Conds: []string{"child"}, Mode: "exclude"}}}}
+	for _, c := range []struct {
+		tag    string
+		amount int64
+		want   map[int64]int64
+	}{{"meat", 2800, map[int64]int64{1: 1120, 2: 1120, 4: 560}}, {"transport", 1200, map[int64]int64{2: 600, 4: 600}}, {"alcohol", 1100, map[int64]int64{2: 550, 3: 550}}, {"plates", 260, map[int64]int64{1: 65, 2: 65, 3: 65, 4: 65}}} {
+		got := Compute(ms, []Item{{ID: 1, PayerID: 1, Details: []Detail{{Amount: c.amount, Tag: c.tag}}}}, rules)
+		if !reflect.DeepEqual(got.PerDetail[0].Shares, c.want) {
+			t.Fatalf("%s: %v", c.tag, got.PerDetail[0].Shares)
+		}
 	}
 }
-
-func TestTransfers_GreedyLargestFirst(t *testing.T) {
-	s := Shares{PerMember: map[int64]MemberShares{
-		1: {NetCents: 200},
-		2: {NetCents: 200},
-		3: {NetCents: -300},
-		4: {NetCents: -100},
-	}}
-	got := Transfers(s)
-	// Largest debtor 3 (300) meets largest creditor 1 (200) → transfer 200,
-	// then remaining 100 goes to creditor 2. Debtor 4 (100) meets remainder
-	// of creditor 2 (100) → 100.
-	want := []Transfer{
-		{FromID: 3, ToID: 1, AmountCents: 200},
-		{FromID: 3, ToID: 2, AmountCents: 100},
-		{FromID: 4, ToID: 2, AmountCents: 100},
+func TestHub(t *testing.T) {
+	s := Shares{PerMember: map[int64]MemberShares{1: {Net: 0}, 2: {Net: 3000}, 3: {Net: -1500}, 4: {Net: -1500}}}
+	got, err := HubTransfers(s, 1)
+	want := []Transfer{{1, 2, 3000}, {3, 1, 1500}, {4, 1, 1500}}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("%v %v", got, err)
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %+v, want %+v", got, want)
+	if _, err = HubTransfers(s, 99); err == nil {
+		t.Fatal("missing host accepted")
+	}
+	s.PerMember[1] = MemberShares{Net: 1}
+	if _, err = HubTransfers(s, 1); err == nil {
+		t.Fatal("unbalanced accepted")
 	}
 }
-
-func TestHubTransfers_EveryoneThroughHub(t *testing.T) {
-	s := Shares{PerMember: map[int64]MemberShares{
-		1: {NetCents: 300},  // hub owes 1
-		2: {NetCents: -100}, // 2 pays hub
-		3: {NetCents: -200}, // 3 pays hub
-		9: {NetCents: 0},    // hub
-	}}
-	got := HubTransfers(s, 9)
-	want := []Transfer{
-		{FromID: 9, ToID: 1, AmountCents: 300},
-		{FromID: 2, ToID: 9, AmountCents: 100},
-		{FromID: 3, ToID: 9, AmountCents: 200},
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %+v, want %+v", got, want)
-	}
-}
-
-func TestPairBreakdown_OnlyDetailsInvolvingBothMembers(t *testing.T) {
-	members := []Member{mk(1), mk(2), mk(3)}
-	items := []Item{
-		// paid by 1: 300 split three ways → 2 owes 1 = 100
-		{ID: 1, PayerID: 1, Details: []Detail{detail(1, 300, "")}},
-		// paid by 2: 300 split three ways → 1 owes 2 = 100
-		{ID: 2, PayerID: 2, Details: []Detail{detail(2, 300, "")}},
-		// paid by 3: no direct debt between 1 and 2
-		{ID: 3, PayerID: 3, Details: []Detail{detail(3, 300, "")}},
-	}
-	s := Compute(members, items, nil)
-	got := PairBreakdown(s, items, 1, 2)
-	want := []PairLine{
-		{ItemID: 1, DetailID: 1, FromID: 2, ToID: 1, AmountCents: 100},
-		{ItemID: 2, DetailID: 2, FromID: 1, ToID: 2, AmountCents: 100},
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %+v, want %+v", got, want)
-	}
+func FuzzConservation(f *testing.F) {
+	f.Add(uint32(101), uint8(3), uint8(5))
+	f.Fuzz(func(t *testing.T, amount uint32, n, w uint8) {
+		count := int(n%30) + 1
+		ms := make([]Member, count)
+		for i := range ms {
+			ms[i] = Member{ID: int64(count - i)}
+		}
+		rule := Rule{Tag: "t", Rest: &Group{Mode: "weight", Weight: float64(w%100+1) / 10}}
+		s := Compute(ms, []Item{{PayerID: ms[0].ID, Details: []Detail{{Amount: int64(amount), Tag: "t"}}}}, []Rule{rule})
+		var owed, net int64
+		for _, v := range s.PerMember {
+			owed += v.Owed
+			net += v.Net
+		}
+		if owed != int64(amount) || net != 0 {
+			t.Fatal(s)
+		}
+		ts, err := HubTransfers(s, ms[0].ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var balance int64
+		for _, tr := range ts {
+			if tr.ToID == ms[0].ID {
+				balance += tr.Amount
+			}
+			if tr.FromID == ms[0].ID {
+				balance -= tr.Amount
+			}
+		}
+		if balance != s.PerMember[ms[0].ID].Net {
+			t.Fatal("hub sign")
+		}
+	})
 }
