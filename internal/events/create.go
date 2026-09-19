@@ -8,17 +8,15 @@ import (
 	"strings"
 	"time"
 
+	"go-split-backend/internal/database"
+
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"go-split-backend/internal/auth"
 )
 
-var errTemplateUnavailable = errors.New("template not available")
-
-// allowedTemplates includes frontend placeholders; non-custom templates must
-// also have seeded content before an event can use them.
+// allowedTemplates includes placeholders that start with empty settings.
 var allowedTemplates = map[string]bool{
 	"自訂":      true,
 	"烤肉/露營模板": true,
@@ -79,6 +77,10 @@ func (h *Handler) PostEvent(c *gin.Context) {
 	req.Place = strings.TrimSpace(req.Place)
 	req.Template = strings.TrimSpace(req.Template)
 
+	if req.Name == "" {
+		respondErr(c, 400, "name is required")
+		return
+	}
 	if !allowedTemplates[req.Template] {
 		respondErr(c, http.StatusBadRequest, "unknown template")
 		return
@@ -97,10 +99,6 @@ func (h *Handler) PostEvent(c *gin.Context) {
 	ctx := c.Request.Context()
 	out, err := createEventTx(ctx, h.DB, sub.AccountID, req)
 	if err != nil {
-		if errors.Is(err, errTemplateUnavailable) {
-			respondErr(c, http.StatusBadRequest, "template not available")
-			return
-		}
 		respondErr(c, http.StatusInternalServerError, "create event")
 		return
 	}
@@ -110,7 +108,7 @@ func (h *Handler) PostEvent(c *gin.Context) {
 // createEventTx runs the whole insert in one transaction so the event, the
 // host membership row, template settings, and invite code are visible together or not at
 // all.
-func createEventTx(ctx context.Context, db *pgxpool.Pool, accountID int64, req createEventRequest) (createEventResponse, error) {
+func createEventTx(ctx context.Context, db database.Store, accountID int64, req createEventRequest) (createEventResponse, error) {
 	tx, err := db.Begin(ctx)
 	if err != nil {
 		return createEventResponse{}, fmt.Errorf("begin tx: %w", err)
@@ -121,7 +119,8 @@ func createEventTx(ctx context.Context, db *pgxpool.Pool, accountID int64, req c
 	if req.Template != "自訂" {
 		content, err = loadTemplateContent(ctx, tx, req.Template)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return createEventResponse{}, errTemplateUnavailable
+			content = templateContent{}
+			err = nil
 		}
 		if err != nil {
 			return createEventResponse{}, fmt.Errorf("load template: %w", err)

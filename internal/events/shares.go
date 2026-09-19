@@ -3,139 +3,45 @@ package events
 import (
 	"context"
 	"encoding/json"
+	"go-split-backend/internal/auth"
+	"go-split-backend/internal/database"
+	"go-split-backend/internal/splitengine"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
-
-	"go-split-backend/internal/auth"
-	"go-split-backend/internal/splitengine"
 )
 
 func (h *Handler) registerSharesRoutes(g *gin.RouterGroup) {
 	anyRole := auth.RequireEventRole(h.DB, "host", "co", "member")
 	g.GET("/:id/shares", anyRole, h.GetShares)
 	g.GET("/:id/transfers", anyRole, h.GetTransfers)
-	g.GET("/:id/pairs/:a/:b", anyRole, h.GetPair)
+	g.GET("/:id/me/details", anyRole, h.GetPersonalDetails)
+	g.GET("/:id/members/:member_id/breakdown", auth.RequireEventRole(h.DB, "host"), h.GetPersonalDetails)
 }
 
 type memberShareDTO struct {
-	MemberID  int64 `json:"member_id"`
-	OwedCents int64 `json:"owed_cents"`
-	PaidCents int64 `json:"paid_cents"`
-	NetCents  int64 `json:"net_cents"`
+	MemberID int64 `json:"member_id"`
+	Owed     int64 `json:"owed"`
+	Paid     int64 `json:"advanced"`
+	Net      int64 `json:"net"`
 }
-
 type detailShareDTO struct {
-	ItemID      int64            `json:"item_id"`
-	DetailID    int64            `json:"detail_id"`
-	AmountCents int64            `json:"amount_cents"`
-	Shares      map[string]int64 `json:"shares"`
+	ItemID   int64 `json:"item_id"`
+	DetailID int64 `json:"detail_id"`
+	Amount   int64 `json:"amount"`
+	splitengine.SplitResult
 }
-
 type sharesResponse struct {
-	GrandTotalCents int64            `json:"grand_total_cents"`
-	PerMember       []memberShareDTO `json:"per_member"`
-	PerDetail       []detailShareDTO `json:"per_detail"`
+	GrandTotal int64            `json:"grand_total"`
+	PerMember  []memberShareDTO `json:"per_member"`
+	PerDetail  []detailShareDTO `json:"per_detail"`
 }
-
-type transferDTO struct {
-	FromID      int64 `json:"from_id"`
-	ToID        int64 `json:"to_id"`
-	AmountCents int64 `json:"amount_cents"`
-	Paid        bool  `json:"paid"`
-}
-
 type transfersResponse struct {
-	Mode      string        `json:"mode"`
-	HubID     int64         `json:"hub_id,omitempty"`
-	Transfers []transferDTO `json:"transfers"`
+	Strategy  string                 `json:"strategy"`
+	HubID     int64                  `json:"hub_id"`
+	Transfers []splitengine.Transfer `json:"transfers"`
 }
-
-// GetShares godoc
-// @Summary     Compute per-member and per-detail shares for an event
-// @Description Any member may call. Runs the split engine against the
-// @Description event's members, items, and rules and returns the whole
-// @Description breakdown. Amounts are in cents.
-// @Tags        shares
-// @Produce     json
-// @Param       id path int true "Event id"
-// @Success     200 {object} sharesResponse
-// @Failure     401 {object} errorResponse
-// @Failure     403 {object} errorResponse
-// @Router      /events/{id}/shares [get]
-func (h *Handler) GetShares(c *gin.Context) {
-	eventID := eventIDFromPath(c)
-	ctx := c.Request.Context()
-
-	result, err := computeEventShares(ctx, h.DB, eventID)
-	if err != nil {
-		respondErr(c, http.StatusInternalServerError, "compute shares")
-		return
-	}
-	c.JSON(http.StatusOK, sharesFromResult(result))
-}
-
-// GetTransfers godoc
-// @Summary     List settlement transfers for an event
-// @Description Any member may call. mode=min (default) greedy-matches
-// @Description debtors to creditors. mode=hub routes every non-zero net
-// @Description through hub (a member id passed as ?hub=).
-// @Tags        shares
-// @Produce     json
-// @Param       id   path  int    true  "Event id"
-// @Param       mode query string false "min or hub"
-// @Param       hub  query int    false "member id when mode=hub"
-// @Success     200  {object} transfersResponse
-// @Failure     400  {object} errorResponse
-// @Failure     401  {object} errorResponse
-// @Failure     403  {object} errorResponse
-// @Router      /events/{id}/transfers [get]
-func (h *Handler) GetTransfers(c *gin.Context) {
-	eventID := eventIDFromPath(c)
-	mode := c.DefaultQuery("mode", "min")
-	if mode != "min" && mode != "hub" {
-		respondErr(c, http.StatusBadRequest, "mode must be min or hub")
-		return
-	}
-	var hubID int64
-	if mode == "hub" {
-		v, err := strconv.ParseInt(c.Query("hub"), 10, 64)
-		if err != nil || v <= 0 {
-			respondErr(c, http.StatusBadRequest, "hub is required when mode=hub")
-			return
-		}
-		hubID = v
-	}
-
-	result, err := computeEventShares(c.Request.Context(), h.DB, eventID)
-	if err != nil {
-		respondErr(c, http.StatusInternalServerError, "compute shares")
-		return
-	}
-
-	var raw []splitengine.Transfer
-	if mode == "hub" {
-		raw = splitengine.HubTransfers(result.Shares, hubID)
-	} else {
-		raw = splitengine.Transfers(result.Shares)
-	}
-	paid, err := loadPaidPairs(c.Request.Context(), h.DB, eventID)
-	if err != nil {
-		respondErr(c, http.StatusInternalServerError, "load paid transfers")
-		return
-	}
-	out := transfersResponse{Mode: mode, HubID: hubID, Transfers: make([]transferDTO, 0, len(raw))}
-	for _, t := range raw {
-		out.Transfers = append(out.Transfers, transferDTO{
-			FromID: t.FromID, ToID: t.ToID, AmountCents: t.AmountCents,
-			Paid: paid[transferKey(t.FromID, t.ToID)],
-		})
-	}
-	c.JSON(http.StatusOK, out)
-}
-
 type engineResult struct {
 	Members []splitengine.Member
 	Items   []splitengine.Item
@@ -143,8 +49,15 @@ type engineResult struct {
 	Shares  splitengine.Shares
 }
 
-func computeEventShares(ctx context.Context, db *pgxpool.Pool, eventID int64) (engineResult, error) {
-	members, err := loadEngineMembers(ctx, db, eventID)
+func computeEventShares(ctx context.Context, db database.Store, eventID int64) (engineResult, error) {
+	snap, err := loadSnapshot(ctx, db, eventID)
+	if err != nil {
+		return engineResult{}, err
+	}
+	if snap != nil {
+		return snap.Engine, nil
+	}
+	ms, err := loadEngineMembers(ctx, db, eventID)
 	if err != nil {
 		return engineResult{}, err
 	}
@@ -156,17 +69,207 @@ func computeEventShares(ctx context.Context, db *pgxpool.Pool, eventID int64) (e
 	if err != nil {
 		return engineResult{}, err
 	}
-	return engineResult{
-		Members: members,
-		Items:   items,
-		Rules:   rules,
-		Shares:  splitengine.Compute(members, items, rules),
-	}, nil
+	return engineResult{ms, items, rules, splitengine.Compute(ms, items, rules)}, nil
 }
 
-func loadEngineMembers(ctx context.Context, db *pgxpool.Pool, eventID int64) ([]splitengine.Member, error) {
+// GetShares godoc
+// @Summary Get split results (personal unless host or archived)
+// @Tags shares
+// @Produce json
+// @Param id path int true "Event id"
+// @Success 200 {object} sharesResponse
+// @Router /events/{id}/shares [get]
+func (h *Handler) GetShares(c *gin.Context) {
+	r, err := computeEventShares(c.Request.Context(), h.DB, eventIDFromPath(c))
+	if err != nil {
+		respondErr(c, 500, "compute shares")
+		return
+	}
+	all, err := allResultsVisible(c, h.DB)
+	if err != nil {
+		respondErr(c, 500, "load visibility")
+		return
+	}
+	filter := int64(0)
+	if !all {
+		filter = auth.EventMemberID(c)
+	}
+	c.JSON(200, sharesFromResult(r, filter))
+}
+func allResultsVisible(c *gin.Context, db database.Store) (bool, error) {
+	if auth.EventRole(c) == "host" {
+		return true, nil
+	}
+	var archived bool
+	err := db.QueryRow(c.Request.Context(), "SELECT archived FROM events WHERE id=$1", eventIDFromPath(c)).Scan(&archived)
+	return archived, err
+}
+
+// GetTransfers godoc
+// @Summary Get host-routed transfers (host only until archived)
+// @Tags shares
+// @Produce json
+// @Param id path int true "Event id"
+// @Success 200 {object} transfersResponse
+// @Router /events/{id}/transfers [get]
+func (h *Handler) GetTransfers(c *gin.Context) {
+	all, err := allResultsVisible(c, h.DB)
+	if err != nil {
+		respondErr(c, 500, "load visibility")
+		return
+	}
+	if !all {
+		respondErr(c, 403, "full transfers are host-only until archived")
+		return
+	}
+	if c.Query("hub") != "" || c.Query("mode") != "" {
+		respondErr(c, 400, "strategy and host are server-managed")
+		return
+	}
+	ctx := c.Request.Context()
+	id := eventIDFromPath(c)
+	snap, err := loadSnapshot(ctx, h.DB, id)
+	if err != nil {
+		respondErr(c, 500, "load settlement")
+		return
+	}
+	if snap != nil {
+		c.JSON(200, transfersResponse{"hub", snap.HubID, snap.Transfers})
+		return
+	}
+	r, err := computeEventShares(ctx, h.DB, id)
+	if err != nil {
+		respondErr(c, 500, "compute shares")
+		return
+	}
+	if issues := splitIssues(r); len(issues) > 0 {
+		c.JSON(422, validationResponse{Error: "invalid splits", Details: issues})
+		return
+	}
+	hub, err := eventHub(ctx, h.DB, id)
+	if err != nil {
+		respondErr(c, 409, "event must have one account-backed host")
+		return
+	}
+	ts, err := splitengine.HubTransfers(r.Shares, hub)
+	if err != nil {
+		respondErr(c, 422, err.Error())
+		return
+	}
+	c.JSON(200, transfersResponse{"hub", hub, ts})
+}
+func sharesFromResult(r engineResult, filter int64) sharesResponse {
+	out := sharesResponse{GrandTotal: r.Shares.GrandTotal, PerMember: []memberShareDTO{}, PerDetail: []detailShareDTO{}}
+	for _, m := range r.Members {
+		if filter != 0 && filter != m.ID {
+			continue
+		}
+		ms := r.Shares.PerMember[m.ID]
+		out.PerMember = append(out.PerMember, memberShareDTO{m.ID, ms.Owed, ms.Paid, ms.Net})
+	}
+	for _, ds := range r.Shares.PerDetail {
+		sr := ds.Result
+		if filter != 0 {
+			sr.Shares = filterShares(sr.Shares, filter)
+			sr.Excluded = filterShares(sr.Excluded, filter)
+		}
+		out.PerDetail = append(out.PerDetail, detailShareDTO{ds.ItemID, ds.DetailID, ds.Amount, sr})
+	}
+	return out
+}
+func filterShares(in []splitengine.Share, id int64) []splitengine.Share {
+	out := []splitengine.Share{}
+	for _, s := range in {
+		if s.MemberID == id {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+type personalLine struct {
+	ItemID   int64  `json:"item_id"`
+	DetailID int64  `json:"detail_id"`
+	Name     string `json:"name"`
+	PayerID  int64  `json:"payer_id"`
+	Owed     int64  `json:"owed"`
+	Advanced int64  `json:"advanced"`
+	Net      int64  `json:"net"`
+}
+type personalResponse struct {
+	MemberID  int64                  `json:"member_id"`
+	Net       int64                  `json:"net"`
+	Lines     []personalLine         `json:"lines"`
+	Transfers []splitengine.Transfer `json:"transfers"`
+}
+
+// GetPersonalDetails godoc
+// @Summary Get every detail contributing to the caller's hub balance, including zeros
+// @Tags shares
+// @Produce json
+// @Param id path int true "Event id"
+// @Success 200 {object} personalResponse
+// @Router /events/{id}/me/details [get]
+// @Router /events/{id}/members/{member_id}/breakdown [get]
+func (h *Handler) GetPersonalDetails(c *gin.Context) {
+	memberID := auth.EventMemberID(c)
+	if c.Param("member_id") != "" {
+		v, ok := memberIDFromPath(c)
+		if !ok {
+			respondErr(c, 400, "invalid member id")
+			return
+		}
+		memberID = v
+	}
+	ctx := c.Request.Context()
+	id := eventIDFromPath(c)
+	r, err := computeEventShares(ctx, h.DB, id)
+	if err != nil {
+		respondErr(c, 500, "compute shares")
+		return
+	}
+	ms, ok := r.Shares.PerMember[memberID]
+	if !ok {
+		respondErr(c, 404, "member not found")
+		return
+	}
+	items, err := loadItems(ctx, h.DB, id, 0)
+	if err != nil {
+		respondErr(c, 500, "load items")
+		return
+	}
+	byDetail := map[int64]splitengine.DetailShares{}
+	for _, d := range r.Shares.PerDetail {
+		byDetail[d.DetailID] = d
+	}
+	out := personalResponse{MemberID: memberID, Net: ms.Net, Lines: []personalLine{}, Transfers: []splitengine.Transfer{}}
+	for _, it := range items {
+		for _, d := range it.Details {
+			owed := byDetail[d.ID].Shares[memberID]
+			advanced := int64(0)
+			if it.PayerMemberID == memberID {
+				advanced = d.Amount
+			}
+			out.Lines = append(out.Lines, personalLine{it.ID, d.ID, d.Name, it.PayerMemberID, owed, advanced, advanced - owed})
+		}
+	}
+	snap, err := loadSnapshot(ctx, h.DB, id)
+	if err != nil {
+		respondErr(c, 500, "load settlement")
+		return
+	}
+	if snap != nil {
+		for _, tr := range snap.Transfers {
+			if tr.FromID == memberID || tr.ToID == memberID {
+				out.Transfers = append(out.Transfers, tr)
+			}
+		}
+	}
+	c.JSON(http.StatusOK, out)
+}
+func loadEngineMembers(ctx context.Context, db database.Store, eventID int64) ([]splitengine.Member, error) {
 	rows, err := db.Query(ctx,
-		`SELECT id, tags FROM event_members WHERE event_id = $1 ORDER BY id`, eventID)
+		`SELECT id, tags FROM event_members WHERE event_id = $1 ORDER BY split_order, id`, eventID)
 	if err != nil {
 		return nil, err
 	}
@@ -182,9 +285,9 @@ func loadEngineMembers(ctx context.Context, db *pgxpool.Pool, eventID int64) ([]
 	return out, rows.Err()
 }
 
-func loadEngineItems(ctx context.Context, db *pgxpool.Pool, eventID int64) ([]splitengine.Item, error) {
+func loadEngineItems(ctx context.Context, db database.Store, eventID int64) ([]splitengine.Item, error) {
 	rows, err := db.Query(ctx, `
-		SELECT i.id, i.payer_member_id, d.id, d.amount_cents, COALESCE(d.tag, ''), d.custom_shares::text
+		SELECT i.id, i.payer_member_id, d.id, d.amount, COALESCE(d.tag, ''), d.custom_shares::text, d.manual_member_ids
 		  FROM items i
 		  JOIN item_details d ON d.item_id = i.id
 		 WHERE i.event_id = $1
@@ -195,36 +298,39 @@ func loadEngineItems(ctx context.Context, db *pgxpool.Pool, eventID int64) ([]sp
 	defer rows.Close()
 
 	items := []splitengine.Item{}
-	byID := map[int64]*splitengine.Item{}
+	byID := map[int64]int{}
 	for rows.Next() {
 		var (
 			itemID, payerID, detailID, amount int64
 			tag, customText                   string
+			manual                            []int64
 		)
-		if err := rows.Scan(&itemID, &payerID, &detailID, &amount, &tag, &customText); err != nil {
+		if err := rows.Scan(&itemID, &payerID, &detailID, &amount, &tag, &customText, &manual); err != nil {
 			return nil, err
 		}
 		var custom map[string]int64
 		if err := json.Unmarshal([]byte(customText), &custom); err != nil {
 			return nil, err
 		}
-		it, ok := byID[itemID]
+		idx, ok := byID[itemID]
 		if !ok {
 			items = append(items, splitengine.Item{ID: itemID, PayerID: payerID})
-			it = &items[len(items)-1]
-			byID[itemID] = it
+			idx = len(items) - 1
+			byID[itemID] = idx
 		}
+		it := &items[idx]
 		it.Details = append(it.Details, splitengine.Detail{
-			ID:           detailID,
-			AmountCents:  amount,
-			Tag:          tag,
-			CustomShares: numericStringMap(custom),
+			ID:              detailID,
+			Amount:          amount,
+			Tag:             tag,
+			CustomShares:    numericStringMap(custom),
+			ManualMemberIDs: manual,
 		})
 	}
 	return items, rows.Err()
 }
 
-func loadEngineRules(ctx context.Context, db *pgxpool.Pool, eventID int64) ([]splitengine.Rule, error) {
+func loadEngineRules(ctx context.Context, db database.Store, eventID int64) ([]splitengine.Rule, error) {
 	rows, err := db.Query(ctx, `
 		SELECT item_tag, groups::text, COALESCE(rest::text, '')
 		  FROM event_rules
@@ -235,18 +341,13 @@ func loadEngineRules(ctx context.Context, db *pgxpool.Pool, eventID int64) ([]sp
 	}
 	defer rows.Close()
 
-	type wireGroup struct {
-		Conds  []string `json:"conds"`
-		Mode   string   `json:"mode"`
-		Weight float64  `json:"weight"`
-	}
 	out := []splitengine.Rule{}
 	for rows.Next() {
 		var tag, groupsText, restText string
 		if err := rows.Scan(&tag, &groupsText, &restText); err != nil {
 			return nil, err
 		}
-		var gs []wireGroup
+		var gs []splitengine.Group
 		if err := json.Unmarshal([]byte(groupsText), &gs); err != nil {
 			return nil, err
 		}
@@ -256,8 +357,8 @@ func loadEngineRules(ctx context.Context, db *pgxpool.Pool, eventID int64) ([]sp
 				Conds: g.Conds, Mode: g.Mode, Weight: g.Weight,
 			})
 		}
-		if restText != "" {
-			var r wireGroup
+		if restText != "" && restText != "null" {
+			var r splitengine.Group
 			if err := json.Unmarshal([]byte(restText), &r); err != nil {
 				return nil, err
 			}
@@ -282,119 +383,4 @@ func numericStringMap(in map[string]int64) map[int64]int64 {
 		out[id] = v
 	}
 	return out
-}
-
-func sharesFromResult(r engineResult) sharesResponse {
-	perMember := make([]memberShareDTO, 0, len(r.Shares.PerMember))
-	ids := make([]int64, 0, len(r.Shares.PerMember))
-	for id := range r.Shares.PerMember {
-		ids = append(ids, id)
-	}
-	sortInt64s(ids)
-	for _, id := range ids {
-		ms := r.Shares.PerMember[id]
-		perMember = append(perMember, memberShareDTO{
-			MemberID: id, OwedCents: ms.OwedCents, PaidCents: ms.PaidCents, NetCents: ms.NetCents,
-		})
-	}
-	perDetail := make([]detailShareDTO, 0, len(r.Shares.PerDetail))
-	for _, ds := range r.Shares.PerDetail {
-		shares := make(map[string]int64, len(ds.Shares))
-		for id, cents := range ds.Shares {
-			shares[strconv.FormatInt(id, 10)] = cents
-		}
-		perDetail = append(perDetail, detailShareDTO{
-			ItemID: ds.ItemID, DetailID: ds.DetailID, AmountCents: ds.AmountCents, Shares: shares,
-		})
-	}
-	return sharesResponse{
-		GrandTotalCents: r.Shares.GrandTotalCents,
-		PerMember:       perMember,
-		PerDetail:       perDetail,
-	}
-}
-
-func sortInt64s(a []int64) {
-	for i := 1; i < len(a); i++ {
-		for j := i; j > 0 && a[j-1] > a[j]; j-- {
-			a[j-1], a[j] = a[j], a[j-1]
-		}
-	}
-}
-
-type pairLineDTO struct {
-	ItemID      int64 `json:"item_id"`
-	DetailID    int64 `json:"detail_id"`
-	FromID      int64 `json:"from_id"`
-	ToID        int64 `json:"to_id"`
-	AmountCents int64 `json:"amount_cents"`
-}
-
-type pairResponse struct {
-	AID       int64         `json:"a_id"`
-	BID       int64         `json:"b_id"`
-	NetAOwesB int64         `json:"net_a_owes_b_cents"`
-	Lines     []pairLineDTO `json:"lines"`
-}
-
-// GetPair godoc
-// @Summary     Item-level breakdown of debt between two members
-// @Description Any member may call. Returns every detail that contributes
-// @Description to a direct debt between :a and :b, plus the signed net
-// @Description (positive: a owes b, negative: b owes a).
-// @Tags        shares
-// @Produce     json
-// @Param       id path int true "Event id"
-// @Param       a  path int true "Member A id"
-// @Param       b  path int true "Member B id"
-// @Success     200 {object} pairResponse
-// @Failure     400 {object} errorResponse
-// @Failure     401 {object} errorResponse
-// @Failure     403 {object} errorResponse
-// @Router      /events/{id}/pairs/{a}/{b} [get]
-func (h *Handler) GetPair(c *gin.Context) {
-	aID, ok := memberParam(c, "a")
-	if !ok {
-		respondErr(c, http.StatusBadRequest, "invalid member a id")
-		return
-	}
-	bID, ok := memberParam(c, "b")
-	if !ok {
-		respondErr(c, http.StatusBadRequest, "invalid member b id")
-		return
-	}
-	if aID == bID {
-		respondErr(c, http.StatusBadRequest, "a and b must be different members")
-		return
-	}
-
-	result, err := computeEventShares(c.Request.Context(), h.DB, eventIDFromPath(c))
-	if err != nil {
-		respondErr(c, http.StatusInternalServerError, "compute shares")
-		return
-	}
-	rawLines := splitengine.PairBreakdown(result.Shares, result.Items, aID, bID)
-
-	out := pairResponse{AID: aID, BID: bID, Lines: make([]pairLineDTO, 0, len(rawLines))}
-	for _, l := range rawLines {
-		out.Lines = append(out.Lines, pairLineDTO{
-			ItemID: l.ItemID, DetailID: l.DetailID,
-			FromID: l.FromID, ToID: l.ToID, AmountCents: l.AmountCents,
-		})
-		switch {
-		case l.FromID == aID && l.ToID == bID:
-			out.NetAOwesB += l.AmountCents
-		case l.FromID == bID && l.ToID == aID:
-			out.NetAOwesB -= l.AmountCents
-		}
-	}
-	c.JSON(http.StatusOK, out)
-}
-
-func memberParam(c *gin.Context, name string) (int64, bool) {
-	v, err := strconv.ParseInt(c.Param(name), 10, 64)
-	if err != nil || v <= 0 {
-		return 0, false
-	}
-	return v, true
 }

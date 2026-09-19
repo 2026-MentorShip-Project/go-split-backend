@@ -45,6 +45,9 @@ func main() {
 		log.Fatalf("Failed to run migrations, err: %v", err)
 	}
 
+	if _, err := events.SeedTemplates(ctx, db); err != nil {
+		log.Fatalf("Failed to seed templates: %v", err)
+	}
 	r := gin.New()
 
 	r.Use(httpx.CORS())

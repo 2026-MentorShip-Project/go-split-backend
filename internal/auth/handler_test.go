@@ -54,8 +54,13 @@ func TestAccountIDForDeletion(t *testing.T) {
 	}
 }
 
-func TestJoinDisplayNameDefaultsWhenOmitted(t *testing.T) {
-	if got := joinDisplayName(""); got != "Guest" {
-		t.Fatalf("joinDisplayName(\"\") = %q, want %q", got, "Guest")
+func TestPhoneValidation(t *testing.T) {
+	for _, s := range []string{"", "abc", "09-123", "１２３"} {
+		if validPhone(s) {
+			t.Fatalf("accepted %q", s)
+		}
+	}
+	if !validPhone("0912345678") {
+		t.Fatal("valid phone rejected")
 	}
 }

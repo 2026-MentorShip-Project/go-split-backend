@@ -2,6 +2,7 @@
 package splitengine
 
 import (
+	"encoding/json"
 	"errors"
 	"math"
 	"math/big"
@@ -25,8 +26,20 @@ type Member struct {
 type Group struct {
 	Conds  []string `json:"conds,omitempty"`
 	Mode   string   `json:"mode"`
-	Weight float64  `json:"weight,omitempty"`
+	Weight float64  `json:"weight"`
 }
+
+// UnmarshalJSON preserves explicit zero while defaulting omitted weights to one.
+func (g *Group) UnmarshalJSON(data []byte) error {
+	type plain Group
+	value := plain{Weight: 1}
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*g = Group(value)
+	return nil
+}
+
 type Rule struct {
 	Tag    string  `json:"item_tag"`
 	Groups []Group `json:"groups"`
@@ -200,6 +213,10 @@ func SplitDetail(d Detail, members []Member, rules []Rule, order []int64, minUni
 	if minUnit <= 0 {
 		minUnit = 1
 	}
+	settleAllocations(&out, weights, fixed, remaining, totalWeight, order, minUnit)
+	return out
+}
+func settleAllocations(out *SplitResult, weights map[int64]int64, fixed map[int64]bool, remaining, totalWeight int64, order []int64, minUnit int64) {
 	var allocated int64
 	index := map[int64]int{}
 	for i := range out.Shares {
@@ -217,8 +234,8 @@ func SplitDetail(d Detail, members []Member, rules []Rule, order []int64, minUni
 		index[sh.MemberID] = i
 	}
 	if order == nil {
-		for _, m := range members {
-			order = append(order, m.ID)
+		for _, sh := range out.Shares {
+			order = append(order, sh.MemberID)
 		}
 	}
 	// Ignore stale/duplicate IDs and retain all eligible members deterministically.
@@ -240,7 +257,6 @@ func SplitDetail(d Detail, members []Member, rules []Rule, order []int64, minUni
 		sh.Trace.RemainderBonus += minUnit
 		left -= minUnit
 	}
-	return out
 }
 func Compute(members []Member, items []Item, rules []Rule) Shares {
 	out := Shares{PerDetail: []DetailShares{}, PerMember: map[int64]MemberShares{}}
@@ -271,8 +287,7 @@ func Compute(members []Member, items []Item, rules []Rule) Shares {
 	return out
 }
 
-// HubTransfers requires a balanced set and an existing host. Order is supplied
-// by the caller so snapshots and previews remain identical.
+// HubTransfers requires a balanced set and an existing host.
 func HubTransfers(s Shares, hubID int64) ([]Transfer, error) {
 	if _, ok := s.PerMember[hubID]; !ok {
 		return nil, errors.New("host is not a member")

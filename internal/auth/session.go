@@ -9,9 +9,10 @@ import (
 	"net/http"
 	"time"
 
+	"go-split-backend/internal/database"
+
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // SessionCookieName is the cookie the browser carries after login/join.
@@ -36,7 +37,7 @@ func (s Subject) IsGuest() bool { return s.GuestID != 0 }
 var ErrNoSession = errors.New("no session")
 
 // IssueSession creates a new session row and writes the cookie on the response.
-func IssueSession(ctx context.Context, db *pgxpool.Pool, c *gin.Context, sub Subject) (string, error) {
+func IssueSession(ctx context.Context, db database.Store, c *gin.Context, sub Subject) (string, error) {
 	token, err := newToken()
 	if err != nil {
 		return "", fmt.Errorf("generate session token: %w", err)
@@ -64,7 +65,7 @@ func IssueSession(ctx context.Context, db *pgxpool.Pool, c *gin.Context, sub Sub
 }
 
 // LookupSession returns the subject for the request's cookie, or ErrNoSession.
-func LookupSession(ctx context.Context, db *pgxpool.Pool, c *gin.Context) (Subject, error) {
+func LookupSession(ctx context.Context, db database.Store, c *gin.Context) (Subject, error) {
 	token, err := c.Cookie(SessionCookieName)
 	if err != nil || token == "" {
 		return Subject{}, ErrNoSession
@@ -85,7 +86,7 @@ func LookupSession(ctx context.Context, db *pgxpool.Pool, c *gin.Context) (Subje
 }
 
 // RevokeSession deletes the request's session and clears the cookie.
-func RevokeSession(ctx context.Context, db *pgxpool.Pool, c *gin.Context) error {
+func RevokeSession(ctx context.Context, db database.Store, c *gin.Context) error {
 	token, err := c.Cookie(SessionCookieName)
 	if err != nil || token == "" {
 		return nil

@@ -1,6 +1,7 @@
 package splitengine
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 )
@@ -117,4 +118,32 @@ func FuzzConservation(f *testing.F) {
 			t.Fatal("hub sign")
 		}
 	})
+}
+
+func TestJSONWeightDefaultAndZero(t *testing.T) {
+	for _, tc := range []struct {
+		raw  string
+		want float64
+	}{
+		{`{"mode":"weight"}`, 1}, {`{"mode":"weight","weight":0}`, 0},
+	} {
+		var g Group
+		if err := json.Unmarshal([]byte(tc.raw), &g); err != nil {
+			t.Fatal(err)
+		}
+		if g.Weight != tc.want {
+			t.Fatalf("%s: %v", tc.raw, g.Weight)
+		}
+		data, err := json.Marshal(g)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var roundtrip Group
+		if err = json.Unmarshal(data, &roundtrip); err != nil {
+			t.Fatal(err)
+		}
+		if roundtrip.Weight != tc.want {
+			t.Fatalf("roundtrip: %s", data)
+		}
+	}
 }

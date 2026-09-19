@@ -6,14 +6,16 @@ import (
 	"net/http"
 	"time"
 
+	"go-split-backend/internal/database"
+
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"go-split-backend/internal/auth"
 )
 
 func (h *Handler) registerDetailRoutes(g *gin.RouterGroup) {
+	g.PATCH("/:id", auth.RequireEventRole(h.DB, "host"), h.PatchEvent)
 	g.GET("/:id", auth.RequireEventRole(h.DB, "host", "co", "member"), h.GetEvent)
 }
 
@@ -30,7 +32,7 @@ type eventDetailResponse struct {
 	InviteCode string      `json:"invite_code,omitempty"`
 	Members    []memberDTO `json:"members"`
 	Items      []itemDTO   `json:"items"`
-	TotalCents int64       `json:"total_cents"`
+	Total      int64       `json:"total"`
 	MyRole     string      `json:"my_role"`
 }
 
@@ -39,7 +41,7 @@ type eventDetailResponse struct {
 // @Description Any member of the event may call. Returns the event
 // @Description metadata, the current invite code, every member with role
 // @Description and tags, every item card with its detail lines, and the
-// @Description grand total in cents so the event page's header can render
+// @Description grand total in whole NT dollars so the event page's header can render
 // @Description without a second round-trip.
 // @Tags        events
 // @Produce     json
@@ -75,22 +77,25 @@ func (h *Handler) GetEvent(c *gin.Context) {
 		respondErr(c, http.StatusInternalServerError, "load items")
 		return
 	}
-	invite, _ := loadInviteCode(ctx, h.DB, eventID)
+	invite := ""
+	if !base.Settled {
+		invite, _ = loadInviteCode(ctx, h.DB, eventID)
+	}
 
 	var total int64
 	for _, it := range items {
-		total += it.TotalCents
+		total += it.Total
 	}
 	base.Members = members
 	base.Items = items
 	base.InviteCode = invite
-	base.TotalCents = total
+	base.Total = total
 	base.MyRole = auth.EventRole(c)
 
 	c.JSON(http.StatusOK, base)
 }
 
-func loadEventBase(ctx context.Context, db *pgxpool.Pool, eventID int64) (eventDetailResponse, error) {
+func loadEventBase(ctx context.Context, db database.Store, eventID int64) (eventDetailResponse, error) {
 	var out eventDetailResponse
 	err := db.QueryRow(ctx, `
 		SELECT id, name, place, starts_at, ends_at, template, settled, archived, created_at
@@ -101,14 +106,31 @@ func loadEventBase(ctx context.Context, db *pgxpool.Pool, eventID int64) (eventD
 	return out, err
 }
 
-func loadMembers(ctx context.Context, db *pgxpool.Pool, eventID int64, sub auth.Subject) ([]memberDTO, error) {
+func loadMembers(ctx context.Context, db database.Store, eventID int64, sub auth.Subject) ([]memberDTO, error) {
+	snap, err := loadSnapshot(ctx, db, eventID)
+	if err != nil {
+		return nil, err
+	}
+	if snap != nil {
+		out := snap.Event.Members
+		for i := range out {
+			var you bool
+			err := db.QueryRow(ctx, "SELECT COALESCE(account_id=$2 OR guest_id=$3,false) FROM event_members WHERE id=$1", out[i].ID, sub.AccountID, sub.GuestID).Scan(&you)
+			if err != nil {
+				return nil, err
+			}
+			out[i].You = you
+		}
+		return out, nil
+	}
+
 	rows, err := db.Query(ctx, `
-		SELECT id, display, role::text, tags,
+		SELECT id, display, role::text, tags, virtual, note, split_order,
 		       (guest_id IS NOT NULL) AS guest,
 		       COALESCE(($1 <> 0 AND account_id = $1) OR ($2 <> 0 AND guest_id = $2), false) AS you
 		  FROM event_members
 		 WHERE event_id = $3
-		 ORDER BY id`,
+		 ORDER BY split_order, id`,
 		sub.AccountID, sub.GuestID, eventID)
 	if err != nil {
 		return nil, err
@@ -118,7 +140,7 @@ func loadMembers(ctx context.Context, db *pgxpool.Pool, eventID int64, sub auth.
 	out := []memberDTO{}
 	for rows.Next() {
 		var m memberDTO
-		if err := rows.Scan(&m.ID, &m.Display, &m.Role, &m.Tags, &m.Guest, &m.You); err != nil {
+		if err := rows.Scan(&m.ID, &m.Display, &m.Role, &m.Tags, &m.Virtual, &m.Note, &m.SplitOrder, &m.Guest, &m.You); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
@@ -126,7 +148,7 @@ func loadMembers(ctx context.Context, db *pgxpool.Pool, eventID int64, sub auth.
 	return out, rows.Err()
 }
 
-func loadInviteCode(ctx context.Context, db *pgxpool.Pool, eventID int64) (string, error) {
+func loadInviteCode(ctx context.Context, db database.Store, eventID int64) (string, error) {
 	var code string
 	err := db.QueryRow(ctx,
 		`SELECT code FROM invitations WHERE event_id = $1 ORDER BY created_at DESC LIMIT 1`,

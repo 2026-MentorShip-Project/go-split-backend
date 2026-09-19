@@ -5,23 +5,27 @@ import (
 	"net/http"
 	"time"
 
+	"go-split-backend/internal/database"
+
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"go-split-backend/internal/auth"
 )
 
 // Handler bundles event endpoints with their database pool.
 type Handler struct {
-	DB *pgxpool.Pool
+	DB database.Store
 }
 
 // New returns a Handler bound to the given pool.
-func New(db *pgxpool.Pool) *Handler { return &Handler{DB: db} }
+func New(db database.Store) *Handler { return &Handler{DB: db} }
 
 // Register wires the /events group with session-required middleware.
 func (h *Handler) Register(r gin.IRouter) {
-	g := r.Group("/events", auth.RequireSession(h.DB))
+	copyHandler := *h
+	copyHandler.DB = database.ContextStore{Base: h.DB}
+	h = &copyHandler
+	g := r.Group("/events", auth.RequireSession(h.DB), h.eventTransaction())
 	g.GET("", h.GetEvents)
 	h.registerCreateRoutes(g)
 	h.registerJoinRoutes(g)
@@ -77,7 +81,7 @@ func (h *Handler) GetEvents(c *gin.Context) {
 
 // queryEventsForSubject returns every event the subject participates in,
 // with the subject's role in each event and the event's member count.
-func queryEventsForSubject(ctx context.Context, db *pgxpool.Pool, sub auth.Subject) ([]eventListItem, error) {
+func queryEventsForSubject(ctx context.Context, db database.Store, sub auth.Subject) ([]eventListItem, error) {
 	// An account's role in an event they own is always 'host'; membership rows
 	// exist for guests and for accounts joining someone else's event. The
 	// UNION covers both cases and deduplicates an account who also appears in
