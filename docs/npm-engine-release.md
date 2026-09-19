@@ -6,7 +6,7 @@ The backend repository publishes `@go-split/engine`. The separate frontend repos
 
 `.github/workflows/npm-engine.yaml` builds and verifies the package, installs the packed tarball into an independent temporary consumer, and uploads that exact tarball as a workflow artifact. This runs without npm credentials.
 
-Publishing only runs on an `engine-vX.Y.Z` tag, or a manual workflow dispatch with `publish_engine:true` while selecting that matching tag. The backend `cd.yaml` excludes engine release tags and guards manual runs on those tags, so engine-only releases skip the GCP deployment job. They do not migrate databases, change infrastructure or deploy Cloud Run. Normal pushes to main retain the existing backend CD behavior and do not publish to npm.
+The release workflow runs only when an `engine-vX.Y.Z` tag is pushed. Branch pushes and manual dispatch do not trigger it. The backend `cd.yaml` excludes engine release tags and guards manual runs on those tags, so engine-only releases skip the GCP deployment job. They do not migrate databases, change infrastructure or deploy Cloud Run. Normal pushes to main retain the existing backend CD behavior and do not publish to npm.
 
 The tag, `packages/split-engine/package.json` version, and `internal/splitengine/engine.go`'s `Version` must match. Only stable X.Y.Z releases are accepted for now. npm publication uses the already-tested tarball; package lifecycle scripts are disabled during the credentialed publish step. An existing npm version is skipped rather than overwritten. Registry errors other than 404 fail the check. Re-running the same tag therefore does not attempt another immutable publication.
 
