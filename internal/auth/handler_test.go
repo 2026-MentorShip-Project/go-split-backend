@@ -45,6 +45,15 @@ func TestSubjectExactlyOne(t *testing.T) {
 	}
 }
 
+func TestAccountIDForDeletion(t *testing.T) {
+	if got, err := accountIDForDeletion(Subject{AccountID: 42}); err != nil || got != 42 {
+		t.Fatalf("accountIDForDeletion(account) = %d, %v; want 42, nil", got, err)
+	}
+	if _, err := accountIDForDeletion(Subject{GuestID: 7}); err == nil {
+		t.Fatal("accountIDForDeletion(guest) returned nil error")
+	}
+}
+
 func TestJoinDisplayNameDefaultsWhenOmitted(t *testing.T) {
 	if got := joinDisplayName(""); got != "Guest" {
 		t.Fatalf("joinDisplayName(\"\") = %q, want %q", got, "Guest")

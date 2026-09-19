@@ -30,6 +30,7 @@ func (h *Handler) Register(r gin.IRouter) {
 	g.POST("/register", h.PostRegister)
 	g.POST("/login", h.PostLogin)
 	g.POST("/google", h.PostGoogle)
+	g.DELETE("/", RequireSession(h.DB), h.DeleteAccount)
 	h.registerGuestRoutes(g)
 }
 
@@ -140,6 +141,34 @@ func (h *Handler) PostLogin(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, accountResponse{ID: account.id, Name: account.name, Email: account.email})
+}
+
+// DeleteAccount godoc
+// @Summary     Delete the current account
+// @Description Delete the account belonging to the current account session.
+// @Tags        auth
+// @Success     204
+// @Failure     401  {object} errorResponse
+// @Failure     403  {object} errorResponse
+// @Router      /auth/ [delete]
+func (h *Handler) DeleteAccount(c *gin.Context) {
+	accountID, err := accountIDForDeletion(CurrentSubject(c))
+	if err != nil {
+		respondErr(c, http.StatusForbidden, err.Error())
+		return
+	}
+	if _, err := h.DB.Exec(c.Request.Context(), `DELETE FROM accounts WHERE id = $1`, accountID); err != nil {
+		respondErr(c, http.StatusInternalServerError, "delete account")
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func accountIDForDeletion(sub Subject) (int64, error) {
+	if !sub.IsAccount() || sub.IsGuest() {
+		return 0, errors.New("only account users can delete an account")
+	}
+	return sub.AccountID, nil
 }
 
 type accountRow struct {
