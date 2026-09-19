@@ -125,6 +125,10 @@ func TestEventJourney(t *testing.T) {
 	request(t, guest, "GET", s.URL+"/events", nil, 401, nil)
 }
 
+func TestHostCohostMemberFlow(t *testing.T) {
+	testHostCohostMemberFlow(t, testServer(t))
+}
+
 func TestSmallLoad(t *testing.T) {
 	if os.Getenv("RUN_LOAD") != "1" {
 		t.Skip("set RUN_LOAD=1 to run k6")

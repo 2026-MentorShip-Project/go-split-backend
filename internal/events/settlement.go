@@ -19,7 +19,33 @@ func (h *Handler) registerSettlementRoutes(g *gin.RouterGroup) {
 
 	g.PUT("/:id/transfers/:from/:to/paid", writeRole, h.PutTransferPaid)
 	g.DELETE("/:id/transfers/:from/:to/paid", writeRole, h.DeleteTransferPaid)
+	g.POST("/:id/settle", hostOnly, h.PostSettle)
 	g.POST("/:id/archive", hostOnly, h.PostArchive)
+}
+
+// PostSettle godoc
+// @Summary     Settle an event
+// @Description Host-only. Marks the event settled so transfer payments can be recorded.
+// @Tags        settlement
+// @Produce     json
+// @Param       id path int true "Event id"
+// @Success     204
+// @Failure     401 {object} errorResponse
+// @Failure     403 {object} errorResponse
+// @Failure     404 {object} errorResponse
+// @Router      /events/{id}/settle [post]
+func (h *Handler) PostSettle(c *gin.Context) {
+	tag, err := h.DB.Exec(c.Request.Context(),
+		`UPDATE events SET settled = TRUE WHERE id = $1`, eventIDFromPath(c))
+	if err != nil {
+		respondErr(c, http.StatusInternalServerError, "settle event")
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		respondErr(c, http.StatusNotFound, "event not found")
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 // PutTransferPaid godoc
