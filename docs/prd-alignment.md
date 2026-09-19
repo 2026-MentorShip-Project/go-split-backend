@@ -64,6 +64,8 @@ Active legacy splits are recalculated under engine 1.1.0. Review their results b
 
 ## Implementation status and API contract
 
+Subsequent product decisions remove event scheduling and add settlement notes and explicit member binding. See [the current frontend API guide](frontend-api-guide.md) for these overrides.
+
 All 28 backend gaps above are implemented. Frontend-only work in the scope boundary remains outside this repository; the demo was reviewed as a reference, not modified or deployed.
 
 - Accounts: `POST /auth/google` accepts a Google ID token. `/auth/register` and `/auth/login` are removed. Unverified email returns `401 google_email_unverified`; timeout returns `504 google_timeout`.

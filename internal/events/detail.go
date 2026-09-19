@@ -20,20 +20,19 @@ func (h *Handler) registerDetailRoutes(g *gin.RouterGroup) {
 }
 
 type eventDetailResponse struct {
-	ID         int64       `json:"id"`
-	Name       string      `json:"name"`
-	Place      string      `json:"place"`
-	StartsAt   *time.Time  `json:"starts_at,omitempty"`
-	EndsAt     *time.Time  `json:"ends_at,omitempty"`
-	Template   string      `json:"template"`
-	Settled    bool        `json:"settled"`
-	Archived   bool        `json:"archived"`
-	CreatedAt  time.Time   `json:"created_at"`
-	InviteCode string      `json:"invite_code,omitempty"`
-	Members    []memberDTO `json:"members"`
-	Items      []itemDTO   `json:"items"`
-	Total      int64       `json:"total"`
-	MyRole     string      `json:"my_role"`
+	TransferNote string      `json:"transfer_note"`
+	ID           int64       `json:"id"`
+	Name         string      `json:"name"`
+	Place        string      `json:"place"`
+	Template     string      `json:"template"`
+	Settled      bool        `json:"settled"`
+	Archived     bool        `json:"archived"`
+	CreatedAt    time.Time   `json:"created_at"`
+	InviteCode   string      `json:"invite_code,omitempty"`
+	Members      []memberDTO `json:"members"`
+	Items        []itemDTO   `json:"items"`
+	Total        int64       `json:"total"`
+	MyRole       string      `json:"my_role"`
 }
 
 // GetEvent godoc
@@ -98,11 +97,11 @@ func (h *Handler) GetEvent(c *gin.Context) {
 func loadEventBase(ctx context.Context, db database.Store, eventID int64) (eventDetailResponse, error) {
 	var out eventDetailResponse
 	err := db.QueryRow(ctx, `
-		SELECT id, name, place, starts_at, ends_at, template, settled, archived, created_at
+		SELECT id, name, place, template, settled, archived, created_at, transfer_note
 		  FROM events
 		 WHERE id = $1`, eventID).
-		Scan(&out.ID, &out.Name, &out.Place, &out.StartsAt, &out.EndsAt,
-			&out.Template, &out.Settled, &out.Archived, &out.CreatedAt)
+		Scan(&out.ID, &out.Name, &out.Place,
+			&out.Template, &out.Settled, &out.Archived, &out.CreatedAt, &out.TransferNote)
 	return out, err
 }
 

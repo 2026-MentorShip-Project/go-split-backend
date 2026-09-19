@@ -41,16 +41,14 @@ func (h *Handler) Register(r gin.IRouter) {
 
 // eventListItem is one row of the dashboard.
 type eventListItem struct {
-	ID          int64      `json:"id"`
-	Name        string     `json:"name"`
-	Place       string     `json:"place"`
-	StartsAt    *time.Time `json:"starts_at,omitempty"`
-	EndsAt      *time.Time `json:"ends_at,omitempty"`
-	Template    string     `json:"template"`
-	Role        string     `json:"role"`
-	MemberCount int        `json:"member_count"`
-	Settled     bool       `json:"settled"`
-	Archived    bool       `json:"archived"`
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Place       string `json:"place"`
+	Template    string `json:"template"`
+	Role        string `json:"role"`
+	MemberCount int    `json:"member_count"`
+	Settled     bool   `json:"settled"`
+	Archived    bool   `json:"archived"`
 }
 
 type eventsResponse struct {
@@ -87,7 +85,7 @@ func queryEventsForSubject(ctx context.Context, db database.Store, sub auth.Subj
 	// UNION covers both cases and deduplicates an account who also appears in
 	// event_members for their own event (should not happen, but harmless).
 	const q = `
-		SELECT e.id, e.name, e.place, e.starts_at, e.ends_at, e.template,
+		SELECT e.id, e.name, e.place, e.template,
 		       'host'::text AS role,
 		       (SELECT COUNT(*) FROM event_members WHERE event_id = e.id) AS member_count,
 		       e.settled, e.archived, e.created_at
@@ -96,7 +94,7 @@ func queryEventsForSubject(ctx context.Context, db database.Store, sub auth.Subj
 
 		UNION
 
-		SELECT e.id, e.name, e.place, e.starts_at, e.ends_at, e.template,
+		SELECT e.id, e.name, e.place, e.template,
 		       em.role::text AS role,
 		       (SELECT COUNT(*) FROM event_members WHERE event_id = e.id) AS member_count,
 		       e.settled, e.archived, e.created_at
@@ -105,7 +103,7 @@ func queryEventsForSubject(ctx context.Context, db database.Store, sub auth.Subj
 		 WHERE ($1 <> 0 AND em.account_id  = $1)
 		    OR ($2 <> 0 AND em.guest_id = $2)
 
-		 ORDER BY 11 DESC`
+		 ORDER BY 9 DESC`
 
 	rows, err := db.Query(ctx, q, sub.AccountID, sub.GuestID)
 	if err != nil {
@@ -119,7 +117,7 @@ func queryEventsForSubject(ctx context.Context, db database.Store, sub auth.Subj
 			it        eventListItem
 			createdAt time.Time
 		)
-		if err := rows.Scan(&it.ID, &it.Name, &it.Place, &it.StartsAt, &it.EndsAt, &it.Template,
+		if err := rows.Scan(&it.ID, &it.Name, &it.Place, &it.Template,
 			&it.Role, &it.MemberCount, &it.Settled, &it.Archived, &createdAt); err != nil {
 			return nil, err
 		}

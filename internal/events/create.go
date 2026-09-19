@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"go-split-backend/internal/database"
 
@@ -33,21 +32,17 @@ func (h *Handler) registerCreateRoutes(g *gin.RouterGroup) {
 }
 
 type createEventRequest struct {
-	Name     string     `json:"name"                binding:"required,min=1,max=120"`
-	Place    string     `json:"place"               binding:"max=200"`
-	StartsAt *time.Time `json:"starts_at,omitempty"`
-	EndsAt   *time.Time `json:"ends_at,omitempty"`
-	Template string     `json:"template"            binding:"required"`
+	Name     string `json:"name"                binding:"required,min=1,max=120"`
+	Place    string `json:"place"               binding:"max=200"`
+	Template string `json:"template"            binding:"required"`
 }
 
 type createEventResponse struct {
-	ID         int64      `json:"id"`
-	Name       string     `json:"name"`
-	Place      string     `json:"place"`
-	StartsAt   *time.Time `json:"starts_at,omitempty"`
-	EndsAt     *time.Time `json:"ends_at,omitempty"`
-	Template   string     `json:"template"`
-	InviteCode string     `json:"invite_code"`
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	Place      string `json:"place"`
+	Template   string `json:"template"`
+	InviteCode string `json:"invite_code"`
 }
 
 // PostEvent godoc
@@ -83,10 +78,6 @@ func (h *Handler) PostEvent(c *gin.Context) {
 	}
 	if !allowedTemplates[req.Template] {
 		respondErr(c, http.StatusBadRequest, "unknown template")
-		return
-	}
-	if req.StartsAt != nil && req.EndsAt != nil && req.EndsAt.Before(*req.StartsAt) {
-		respondErr(c, http.StatusBadRequest, "ends_at must not be before starts_at")
 		return
 	}
 
@@ -129,10 +120,10 @@ func createEventTx(ctx context.Context, db database.Store, accountID int64, req 
 
 	var eventID int64
 	err = tx.QueryRow(ctx, `
-		INSERT INTO events (account_id, name, place, starts_at, ends_at, template)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO events (account_id, name, place, template)
+		VALUES ($1, $2, $3, $4)
 		RETURNING id`,
-		accountID, req.Name, req.Place, req.StartsAt, req.EndsAt, req.Template,
+		accountID, req.Name, req.Place, req.Template,
 	).Scan(&eventID)
 	if err != nil {
 		return createEventResponse{}, fmt.Errorf("insert event: %w", err)
@@ -166,8 +157,6 @@ func createEventTx(ctx context.Context, db database.Store, accountID int64, req 
 		ID:         eventID,
 		Name:       req.Name,
 		Place:      req.Place,
-		StartsAt:   req.StartsAt,
-		EndsAt:     req.EndsAt,
 		Template:   req.Template,
 		InviteCode: code,
 	}, nil

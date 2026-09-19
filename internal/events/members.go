@@ -19,6 +19,7 @@ func (h *Handler) registerMemberRoutes(g *gin.RouterGroup) {
 	g.GET("/:id/members", anyRole, h.GetMembers)
 	g.GET("/:id/members/:member_id/role", anyRole, h.GetMemberRole)
 	g.POST("/:id/members", hostOnly, h.PostMember)
+	g.POST("/:id/members/:member_id/bind", hostOnly, h.BindMember)
 	g.PATCH("/:id/members/:member_id", hostOnly, h.PatchMember)
 	g.DELETE("/:id/members/:member_id", hostOnly, h.DeleteMember)
 }

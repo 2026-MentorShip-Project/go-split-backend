@@ -458,7 +458,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Name, place and optional start/end dates; omit template",
+                        "description": "Name and place; omit template",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -608,13 +608,14 @@ const docTemplate = `{
         },
         "/events/{id}/items/{item_id}": {
             "get": {
+                "description": "allocation contains calculated shares, exclusions and validity; custom_amounts contains only manual overrides. Non-hosts see their own allocations until archive.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "items"
                 ],
-                "summary": "Get one item with its details",
+                "summary": "Get one item with saved inputs and computed detail allocations",
                 "parameters": [
                     {
                         "type": "integer",
@@ -1055,6 +1056,60 @@ const docTemplate = `{
                 }
             }
         },
+        "/events/{id}/members/{member_id}/bind": {
+            "post": {
+                "description": "Host only, active events only. Keeps placeholder ID, display, role, tags, note and split order. Moves expense references and deletes the duplicate joined membership. Conflicting custom amounts return 409. Splits recalculate with one fewer member.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "members"
+                ],
+                "summary": "Bind an already-joined identity to a host-created placeholder",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Placeholder member id to keep",
+                        "name": "member_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Joined member to bind",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/events.bindMemberRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/events.memberDTO"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/events/{id}/members/{member_id}/breakdown": {
             "get": {
                 "produces": [
@@ -1406,6 +1461,47 @@ const docTemplate = `{
                         "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/events.validationResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/events/{id}/settlement-note": {
+            "patch": {
+                "description": "Host only. Empty string clears the note. Read transfer_note from GET /events/{id}.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settlement"
+                ],
+                "summary": "Save the settlement output message before settlement",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Settlement message",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/events.settlementNoteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
                         }
                     }
                 }
@@ -2044,6 +2140,17 @@ const docTemplate = `{
                 }
             }
         },
+        "events.bindMemberRequest": {
+            "type": "object",
+            "required": [
+                "joined_member_id"
+            ],
+            "properties": {
+                "joined_member_id": {
+                    "type": "integer"
+                }
+            }
+        },
         "events.createDetailRequest": {
             "type": "object",
             "properties": {
@@ -2084,9 +2191,6 @@ const docTemplate = `{
                 "template"
             ],
             "properties": {
-                "ends_at": {
-                    "type": "string"
-                },
                 "name": {
                     "type": "string",
                     "maxLength": 120,
@@ -2096,9 +2200,6 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 200
                 },
-                "starts_at": {
-                    "type": "string"
-                },
                 "template": {
                     "type": "string"
                 }
@@ -2107,9 +2208,6 @@ const docTemplate = `{
         "events.createEventResponse": {
             "type": "object",
             "properties": {
-                "ends_at": {
-                    "type": "string"
-                },
                 "id": {
                     "type": "integer"
                 },
@@ -2120,9 +2218,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "place": {
-                    "type": "string"
-                },
-                "starts_at": {
                     "type": "string"
                 },
                 "template": {
@@ -2180,6 +2275,9 @@ const docTemplate = `{
         "events.detailDTO": {
             "type": "object",
             "properties": {
+                "allocation": {
+                    "$ref": "#/definitions/splitengine.SplitResult"
+                },
                 "amount": {
                     "type": "integer"
                 },
@@ -2288,9 +2386,6 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
-                "ends_at": {
-                    "type": "string"
-                },
                 "id": {
                     "type": "integer"
                 },
@@ -2321,14 +2416,14 @@ const docTemplate = `{
                 "settled": {
                     "type": "boolean"
                 },
-                "starts_at": {
-                    "type": "string"
-                },
                 "template": {
                     "type": "string"
                 },
                 "total": {
                     "type": "integer"
+                },
+                "transfer_note": {
+                    "type": "string"
                 }
             }
         },
@@ -2337,9 +2432,6 @@ const docTemplate = `{
             "properties": {
                 "archived": {
                     "type": "boolean"
-                },
-                "ends_at": {
-                    "type": "string"
                 },
                 "id": {
                     "type": "integer"
@@ -2358,9 +2450,6 @@ const docTemplate = `{
                 },
                 "settled": {
                     "type": "boolean"
-                },
-                "starts_at": {
-                    "type": "string"
                 },
                 "template": {
                     "type": "string"
@@ -2537,9 +2626,6 @@ const docTemplate = `{
                 "name"
             ],
             "properties": {
-                "ends_at": {
-                    "type": "string"
-                },
                 "name": {
                     "type": "string",
                     "maxLength": 120
@@ -2547,9 +2633,6 @@ const docTemplate = `{
                 "place": {
                     "type": "string",
                     "maxLength": 200
-                },
-                "starts_at": {
-                    "type": "string"
                 },
                 "template": {
                     "type": "string"
@@ -2683,6 +2766,18 @@ const docTemplate = `{
                 }
             }
         },
+        "events.settlementNoteRequest": {
+            "type": "object",
+            "required": [
+                "note"
+            ],
+            "properties": {
+                "note": {
+                    "type": "string",
+                    "maxLength": 2000
+                }
+            }
+        },
         "events.sharesResponse": {
             "type": "object",
             "properties": {
@@ -2812,6 +2907,35 @@ const docTemplate = `{
                 },
                 "trace": {
                     "$ref": "#/definitions/splitengine.Trace"
+                }
+            }
+        },
+        "splitengine.SplitResult": {
+            "type": "object",
+            "properties": {
+                "diff": {
+                    "type": "integer"
+                },
+                "excluded": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/splitengine.Share"
+                    }
+                },
+                "shares": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/splitengine.Share"
+                    }
+                },
+                "total_weight": {
+                    "type": "number"
+                },
+                "unit_price": {
+                    "type": "number"
+                },
+                "validity": {
+                    "$ref": "#/definitions/splitengine.Validity"
                 }
             }
         },
