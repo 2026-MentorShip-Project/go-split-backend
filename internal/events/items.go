@@ -146,7 +146,8 @@ func (h *Handler) PostItem(c *gin.Context) {
 // GetItems godoc
 // @Summary     List every item in an event
 // @Description Any member may call. Cards ordered newest first, details
-// @Description within a card ordered by ordinal.
+// @Description within a card ordered by ordinal. Optional tag filters cards containing that tag.
+// @Param tag query string false "Item tag to locate"
 // @Tags        items
 // @Produce     json
 // @Param       id path int true "Event id"
@@ -160,6 +161,18 @@ func (h *Handler) GetItems(c *gin.Context) {
 	if err != nil {
 		respondErr(c, http.StatusInternalServerError, "list items")
 		return
+	}
+	if label := c.Query("tag"); label != "" {
+		filtered := []itemDTO{}
+		for _, item := range items {
+			for _, d := range item.Details {
+				if d.Tag != nil && *d.Tag == label {
+					filtered = append(filtered, item)
+					break
+				}
+			}
+		}
+		items = filtered
 	}
 	c.JSON(http.StatusOK, itemsResponse{Items: items})
 }

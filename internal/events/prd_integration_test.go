@@ -212,7 +212,17 @@ func TestPRDRuleLocks(t *testing.T) {
 	rules := decodePRD[rulesResponse](t, a.call(t, host, "GET", base+"/rules", nil, 200))
 	rid := rules.Rules[0].ID
 	ruleURL := fmt.Sprintf("%s/rules/%d", base, rid)
-	a.call(t, host, "DELETE", ruleURL, nil, 409)
+	conflict := decodePRD[struct {
+		DetailsURL string `json:"details_url"`
+	}](t, a.call(t, host, "DELETE", ruleURL, nil, 409))
+	found := decodePRD[itemsResponse](t, a.call(t, host, "GET", conflict.DetailsURL, nil, 200))
+	if len(found.Items) != 1 {
+		t.Fatal("rule usage link did not locate card")
+	}
+	absent := decodePRD[itemsResponse](t, a.call(t, host, "GET", base+"/items?tag=absent", nil, 200))
+	if len(absent.Items) != 0 {
+		t.Fatal("tag filter returned unrelated cards")
+	}
 	a.call(t, host, "DELETE", base+"/tags/items/肉品", nil, 409)
 	a.call(t, host, "POST", base+"/rules", gin.H{"item_tag": "水果", "groups": []any{}}, 409)
 	for _, weight := range []float64{.01, 2.55, 101, -1} {

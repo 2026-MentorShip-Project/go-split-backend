@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -610,7 +611,12 @@ func (h *Handler) DeleteRule(c *gin.Context) {
 		return
 	}
 	if used > 0 {
-		c.JSON(409, gin.H{"error": "rule is used by expense details", "count": used, "details_url": fmt.Sprintf("/events/%d/items", eventIDFromPath(c))})
+		var label string
+		if err := h.DB.QueryRow(c.Request.Context(), "SELECT item_tag FROM event_rules WHERE id=$1", ruleID).Scan(&label); err != nil {
+			respondErr(c, 500, "load rule tag")
+			return
+		}
+		c.JSON(409, gin.H{"error": "rule is used by expense details", "count": used, "details_url": fmt.Sprintf("/events/%d/items?tag=%s", eventIDFromPath(c), url.QueryEscape(label))})
 		return
 	}
 	tag, err := h.DB.Exec(c.Request.Context(),

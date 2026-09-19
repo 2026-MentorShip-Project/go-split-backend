@@ -17,7 +17,7 @@ func (h *Handler) registerSharesRoutes(g *gin.RouterGroup) {
 	g.GET("/:id/shares", anyRole, h.GetShares)
 	g.GET("/:id/transfers", anyRole, h.GetTransfers)
 	g.GET("/:id/me/details", anyRole, h.GetPersonalDetails)
-	g.GET("/:id/members/:member_id/breakdown", auth.RequireEventRole(h.DB, "host"), h.GetPersonalDetails)
+	g.GET("/:id/members/:member_id/breakdown", auth.RequireEventRole(h.DB, "host"), h.GetMemberBreakdown)
 }
 
 type memberShareDTO struct {
@@ -210,7 +210,6 @@ type personalResponse struct {
 // @Param id path int true "Event id"
 // @Success 200 {object} personalResponse
 // @Router /events/{id}/me/details [get]
-// @Router /events/{id}/members/{member_id}/breakdown [get]
 func (h *Handler) GetPersonalDetails(c *gin.Context) {
 	memberID := auth.EventMemberID(c)
 	if c.Param("member_id") != "" {
@@ -384,3 +383,13 @@ func numericStringMap(in map[string]int64) map[int64]int64 {
 	}
 	return out
 }
+
+// GetMemberBreakdown godoc
+// @Summary Host-only breakdown of one member's complete detail ledger
+// @Tags shares
+// @Produce json
+// @Param id path int true "Event id"
+// @Param member_id path int true "Member id"
+// @Success 200 {object} personalResponse
+// @Router /events/{id}/members/{member_id}/breakdown [get]
+func (h *Handler) GetMemberBreakdown(c *gin.Context) { h.GetPersonalDetails(c) }
