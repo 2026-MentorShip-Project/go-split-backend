@@ -2,11 +2,11 @@
 
 The backend repository publishes `@go-split/engine`. The separate frontend repository pins it as a normal npm dependency. GitHub Actions builds the Go binary; end-user browsers download it from the deployed frontend, not from npm.
 
-## What CD does
+## What the npm workflow does
 
-`.github/workflows/cd.yaml` builds and verifies the package, installs the packed tarball into an independent temporary consumer, and uploads that exact tarball as a workflow artifact. This runs without npm credentials.
+`.github/workflows/npm-engine.yaml` builds and verifies the package, installs the packed tarball into an independent temporary consumer, and uploads that exact tarball as a workflow artifact. This runs without npm credentials.
 
-Publishing only runs on an `engine-vX.Y.Z` tag, or a manual workflow dispatch with `publish_engine:true` while selecting that matching tag. Engine-only releases skip the GCP deployment job, so they do not migrate databases, change infrastructure or deploy Cloud Run. Normal pushes to main retain the existing backend CD behavior and do not publish to npm.
+Publishing only runs on an `engine-vX.Y.Z` tag, or a manual workflow dispatch with `publish_engine:true` while selecting that matching tag. The backend `cd.yaml` excludes engine release tags and guards manual runs on those tags, so engine-only releases skip the GCP deployment job. They do not migrate databases, change infrastructure or deploy Cloud Run. Normal pushes to main retain the existing backend CD behavior and do not publish to npm.
 
 The tag, `packages/split-engine/package.json` version, and `internal/splitengine/engine.go`'s `Version` must match. Only stable X.Y.Z releases are accepted for now. npm publication uses the already-tested tarball; package lifecycle scripts are disabled during the credentialed publish step. An existing npm version is skipped rather than overwritten. Registry errors other than 404 fail the check. Re-running the same tag therefore does not attempt another immutable publication.
 
@@ -19,7 +19,7 @@ PR CI builds, packs and tests the package without publishing. No npm token is av
 3. Once the package exists, prefer configuring an npm trusted publisher for:
    - GitHub owner: `2026-MentorShip-Project`
    - Repository: `go-split-backend`
-   - Workflow filename: `cd.yaml`
+   - Workflow filename: `npm-engine.yaml`
    - Environment: leave empty, matching this workflow
    - Allow publishing in the trusted publisher configuration.
 4. Remove `NPM_TOKEN` after trusted publishing is configured. The workflow uses GitHub OIDC when no token is supplied. It uses Node 24 and npm 11.5.1 or later. Publishing includes provenance; the repository/package must satisfy npm's provenance requirements.
