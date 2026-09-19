@@ -30,8 +30,6 @@ env:
 
 jobs:
   deploy:
-    # Engine-only releases must not migrate databases or deploy Cloud Run.
-    if: ${{ !startsWith(github.ref, 'refs/tags/engine-v') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
