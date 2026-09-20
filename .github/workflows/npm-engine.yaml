@@ -81,4 +81,4 @@ jobs:
             : > "$NPM_CONFIG_USERCONFIG"
             unset NODE_AUTH_TOKEN
           fi
-          npm publish ./packed/*.tgz --access public --provenance --ignore-scripts --registry=https://registry.npmjs.org/
+          npm publish ./packed/*.tgz --access public --ignore-scripts --registry=https://registry.npmjs.org/
