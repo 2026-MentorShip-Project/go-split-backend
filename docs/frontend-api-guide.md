@@ -107,3 +107,21 @@ For Axios, configure the shared instance with `withCredentials:true`. The backen
 Use browser Network/Storage panels to check whether `/auth/join`'s `Set-Cookie` was accepted and whether `/events/{id}` sends `Cookie: session=…`. Do not share the cookie value. See [MDN's credentialed fetch guidance](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch#including_credentials).
 
 A successful backend test does not diagnose the deployed frontend: its actual origin, request options and browser cookie-blocking reason still need inspection.
+
+## QR invite flow
+
+The QR code is rendered by the frontend; the backend does not generate or store a QR image. Encode a frontend URL containing the existing invite code:
+
+```text
+https://frontend.example/join?code=4KQ2-8P
+```
+
+The frontend `/join` route owns the UI and API selection:
+
+1. Read `code` from the query string.
+2. Call `GET /auth/invite/{code}` to validate the invitation and load the event name and available conditions.
+3. Render the invite form or account-login option.
+4. For a new guest, submit the form to `POST /auth/join` with `code`, `email`, `phone`, `name`, `cond_tags`, and optional `note`.
+5. For an already authenticated account or guest session, submit to `POST /events/join` with `code`, plus any name, conditions, and note fields that apply.
+
+The QR payload is only another representation of the invite code; it does not create a second invitation or bypass the existing expiration and settlement checks. Use the frontend's QR component/library to render the URL as SVG or canvas.

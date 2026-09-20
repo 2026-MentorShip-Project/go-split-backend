@@ -47,7 +47,7 @@ func randomBlock(n int) (string, error) {
 	max := big.NewInt(int64(len(inviteAlphabet)))
 	var b strings.Builder
 	b.Grow(n)
-	for i := 0; i < n; i++ {
+	for range n {
 		idx, err := rand.Int(rand.Reader, max)
 		if err != nil {
 			return "", fmt.Errorf("random invite char: %w", err)
@@ -71,7 +71,7 @@ type pgconnCommandTag = pgconn.CommandTag
 // issueInviteCode inserts a fresh code for the event, retrying on unique
 // collisions. Returns the code that was actually persisted.
 func issueInviteCode(ctx context.Context, ex inviteExecer, eventID int64) (string, error) {
-	for i := 0; i < inviteIssueRetries; i++ {
+	for range inviteIssueRetries {
 		code, err := newInviteCode()
 		if err != nil {
 			return "", err

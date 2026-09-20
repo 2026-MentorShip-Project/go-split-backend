@@ -4,7 +4,7 @@
 
 Table of contents
 =================
-* [PRD dest](#prd)
+* [PRD](#prd)
 * [Prerequisite](#prerequisite)
 * [Development](#development)
     * [Install modules](#install-modules)
@@ -16,6 +16,7 @@ Table of contents
 - Engine specification: https://github.com/Go-Split/Go-Split/blob/main/PRD/SPEC-ENGINE-v1-1.md
 - Product PRD: https://github.com/Go-Split/Go-Split/blob/main/PRD/PRD-v0-16.md
 - Demo site: https://go-split.github.io/Go-Split/
+- UML: https://github.com/Go-Split/Go-Split/blob/main/UML.pdf
 
 ## Prerequisite
 
