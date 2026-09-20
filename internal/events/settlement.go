@@ -15,6 +15,7 @@ import (
 func (h *Handler) registerSettlementRoutes(g *gin.RouterGroup) {
 	host := auth.RequireEventRole(h.DB, "host")
 	g.POST("/:id/settle", host, h.PostSettle)
+	g.PATCH("/:id/settlement-note", host, h.PatchSettlementNote)
 	g.POST("/:id/archive", host, h.PostArchive)
 }
 

@@ -92,3 +92,4 @@ and update its API requests independently.
 The importable npm package lives in [`packages/split-engine`](packages/split-engine).
 See [npm engine releases](docs/npm-engine-release.md) for CD publishing setup
 and frontend installation.
+See the [frontend API guide](docs/frontend-api-guide.md) for settlement screen endpoints, computed item allocations, date-free events, shared-link member binding, and browser session troubleshooting.
