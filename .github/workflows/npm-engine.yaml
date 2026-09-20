@@ -34,7 +34,7 @@ jobs:
         run: |
           mkdir -p packed
           npm pack --pack-destination packed
-          node scripts/test-package.mjs packed/*.tgz
+          node scripts/test-package.mjs ./packed/*.tgz
       - uses: actions/upload-artifact@v4
         with:
           name: npm-split-engine-${{ github.sha }}
