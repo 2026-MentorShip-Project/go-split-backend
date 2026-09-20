@@ -1,0 +1,28 @@
+{
+  "name": "@go-split/engine",
+  "version": "1.1.0",
+  "description": "Shared Go-Split expense allocation engine for browsers, compiled from Go to WebAssembly",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./engine.wasm": "./dist/engine.wasm",
+    "./wasm_exec.js": "./dist/wasm_exec.js"
+  },
+  "files": ["dist", "README.md"],
+  "sideEffects": ["./dist/wasm_exec.js"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/2026-MentorShip-Project/go-split-backend.git",
+    "directory": "packages/split-engine"
+  },
+  "license": "UNLICENSED",
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/*.test.mjs",
+    "prepack": "npm run build && npm test",
+    "verify-release": "node scripts/verify-release.mjs"
+  }
+}
