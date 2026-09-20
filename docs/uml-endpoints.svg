@@ -1,0 +1,167 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="2500" viewBox="0 0 1800 2500">
+  <style>
+    .title { font: 700 34px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; fill: #18212f }
+    .subtitle { font: 18px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; fill: #526071 }
+    .stage { font: 700 23px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; fill: #fff }
+    .label { font: 600 18px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; fill: #18212f }
+    .path { font: 16px ui-monospace,SFMono-Regular,Menlo,monospace; fill: #173b66 }
+    .note { font: 16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; fill: #526071 }
+    .small { font: 14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; fill: #526071 }
+    .card { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 2 }
+    .auth { fill: #315c9b }
+    .event { fill: #247a68 }
+    .write { fill: #b56b18 }
+    .settle { fill: #7c4d9b }
+    .archive { fill: #3e5969 }
+    .arrow { stroke: #64748b; stroke-width: 3; fill: none; marker-end: url(#arrow) }
+    .dash { stroke: #94a3b8; stroke-width: 2; stroke-dasharray: 8 8; fill: none }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L10,3 L0,6 Z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <rect width="1800" height="2500" fill="#ffffff"/>
+  <text x="90" y="70" class="title">Go-Split UML → Backend Endpoint Map</text>
+  <text x="90" y="105" class="subtitle">Companion to UML.pdf · browser calls are shown in blue monospace · client-only work is marked separately</text>
+
+  <!-- Main spine -->
+  <path class="arrow" d="M230 190 L230 2390"/>
+
+  <!-- 1 -->
+  <rect x="90" y="145" width="280" height="58" rx="14" class="auth"/>
+  <text x="230" y="182" text-anchor="middle" class="stage">1 · Start / session</text>
+  <rect x="430" y="135" width="1250" height="90" rx="12" class="card"/>
+  <text x="460" y="170" class="path">GET /events</text>
+  <text x="460" y="199" class="note">Session probe: 200 → Home; 401 → Entry. No dedicated /auth/session endpoint exists.</text>
+
+  <!-- 2 -->
+  <rect x="90" y="270" width="280" height="58" rx="14" class="auth"/>
+  <text x="230" y="307" text-anchor="middle" class="stage">2 · Entry / identity</text>
+  <rect x="430" y="250" width="1250" height="180" rx="12" class="card"/>
+  <text x="460" y="285" class="path">POST /auth/google</text>
+  <text x="800" y="285" class="path">GET /auth/invite/{code}</text>
+  <text x="1240" y="285" class="path">POST /auth/join</text>
+  <text x="460" y="315" class="path">POST /auth/recover</text>
+  <text x="800" y="315" class="path">POST /events/join</text>
+  <text x="460" y="360" class="note">Host: Google ID token → backend session cookie.</text>
+  <text x="460" y="388" class="note">New participant: validate invite, then join with code + email + phone.</text>
+  <text x="460" y="416" class="note">Existing session: join with POST /events/join; recovery uses code + email + phone.</text>
+
+  <!-- 3 -->
+  <rect x="90" y="475" width="280" height="58" rx="14" class="event"/>
+  <text x="230" y="512" text-anchor="middle" class="stage">3 · Home / templates</text>
+  <rect x="430" y="455" width="1250" height="100" rx="12" class="card"/>
+  <text x="460" y="495" class="path">GET /events</text>
+  <text x="900" y="495" class="path">GET /templates</text>
+  <text x="460" y="528" class="note">List the user’s activities. Templates are optional and only needed before creation.</text>
+
+  <!-- 4 -->
+  <rect x="90" y="600" width="280" height="58" rx="14" class="write"/>
+  <text x="230" y="637" text-anchor="middle" class="stage">4 · Create activity</text>
+  <rect x="430" y="580" width="1250" height="100" rx="12" class="card"/>
+  <text x="460" y="620" class="path">POST /events</text>
+  <text x="460" y="653" class="note">Returns event id and invite_code; selected template settings are applied atomically.</text>
+
+  <!-- 5 -->
+  <rect x="90" y="725" width="280" height="58" rx="14" class="event"/>
+  <text x="230" y="762" text-anchor="middle" class="stage">5 · Event dashboard</text>
+  <rect x="430" y="705" width="1250" height="145" rx="12" class="card"/>
+  <text x="460" y="742" class="path">GET /events/{id}</text>
+  <text x="460" y="775" class="note">Primary read: metadata, my_role, members, items, total, invite code, settled/archive flags.</text>
+  <text x="460" y="807" class="path">GET /events/{id}/members   ·   GET /events/{id}/items</text>
+  <text x="460" y="836" class="note">Use the separate reads only when the dashboard response is not enough.</text>
+
+  <!-- 6 -->
+  <rect x="90" y="895" width="280" height="58" rx="14" class="write"/>
+  <text x="230" y="932" text-anchor="middle" class="stage">6 · Members / roles</text>
+  <rect x="430" y="875" width="1250" height="190" rx="12" class="card"/>
+  <text x="460" y="910" class="path">GET /events/{id}/members</text>
+  <text x="460" y="940" class="path">POST /events/{id}/members</text>
+  <text x="460" y="970" class="path">PATCH /events/{id}/members/{member_id}</text>
+  <text x="460" y="1000" class="path">DELETE /events/{id}/members/{member_id}</text>
+  <text x="1030" y="910" class="path">GET /events/{id}/members/{member_id}/role</text>
+  <text x="1030" y="940" class="path">POST /events/{id}/members/{placeholder_id}/bind</text>
+  <text x="1030" y="985" class="note">Host-only writes. Role can also be read from</text>
+  <text x="1030" y="1012" class="note">GET /events/{id}. Explicit binding is never automatic.</text>
+
+  <!-- 7 -->
+  <rect x="90" y="1110" width="280" height="58" rx="14" class="write"/>
+  <text x="230" y="1147" text-anchor="middle" class="stage">7 · Rules / tags</text>
+  <rect x="430" y="1090" width="1250" height="190" rx="12" class="card"/>
+  <text x="460" y="1125" class="path">GET /events/{id}/rules</text>
+  <text x="460" y="1155" class="path">POST /events/{id}/rules</text>
+  <text x="460" y="1185" class="path">PATCH /events/{id}/rules/{rule_id}</text>
+  <text x="460" y="1215" class="path">DELETE /events/{id}/rules/{rule_id}</text>
+  <text x="1030" y="1125" class="path">GET /events/{id}/tags/items</text>
+  <text x="1030" y="1155" class="path">GET /events/{id}/tags/conds</text>
+  <text x="1030" y="1195" class="note">Tag catalog writes:</text>
+  <text x="1030" y="1222" class="path">POST/PATCH/DELETE .../tags/{items|conds}[/{label}]</text>
+
+  <!-- 8 -->
+  <rect x="90" y="1325" width="280" height="58" rx="14" class="write"/>
+  <text x="230" y="1362" text-anchor="middle" class="stage">8 · Expense editing</text>
+  <rect x="430" y="1305" width="1250" height="160" rx="12" class="card"/>
+  <text x="460" y="1342" class="path">GET /events/{id}/items/{item_id}</text>
+  <text x="460" y="1372" class="path">POST /events/{id}/items</text>
+  <text x="460" y="1402" class="path">PATCH /events/{id}/items/{item_id}</text>
+  <text x="460" y="1432" class="path">DELETE /events/{id}/items/{item_id}</text>
+  <text x="1030" y="1342" class="note">Co-host/host writes; all roles can read.</text>
+  <text x="1030" y="1380" class="note">The UML’s “Atomic Commit” has no batch endpoint today.</text>
+  <text x="1030" y="1410" class="note">Mutations are individual item requests.</text>
+
+  <!-- 9 -->
+  <rect x="90" y="1510" width="280" height="58" rx="14" class="event"/>
+  <text x="230" y="1547" text-anchor="middle" class="stage">9 · Preview results</text>
+  <rect x="430" y="1490" width="1250" height="130" rx="12" class="card"/>
+  <text x="460" y="1530" class="path">GET /events/{id}/shares</text>
+  <text x="460" y="1560" class="path">GET /events/{id}/transfers</text>
+  <text x="460" y="1590" class="path">GET /events/{id}/members/{member_id}/breakdown</text>
+  <text x="1030" y="1530" class="note">Shares are calculated previews before settlement.</text>
+  <text x="1030" y="1560" class="note">Full transfers are host-only until archive.</text>
+
+  <!-- 10 -->
+  <rect x="90" y="1665" width="280" height="58" rx="14" class="settle"/>
+  <text x="230" y="1702" text-anchor="middle" class="stage">10 · Confirm settlement</text>
+  <rect x="430" y="1645" width="1250" height="145" rx="12" class="card"/>
+  <text x="460" y="1685" class="path">PATCH /events/{id}/settlement-note</text>
+  <text x="460" y="1718" class="path">POST /events/{id}/settle</text>
+  <text x="460" y="1755" class="note">/settle validates, calculates transfers, stores the immutable snapshot,</text>
+  <text x="460" y="1782" class="note">and freezes invitations and edits. There is no separate confirm endpoint.</text>
+
+  <!-- 11 -->
+  <rect x="90" y="1835" width="280" height="58" rx="14" class="settle"/>
+  <text x="230" y="1872" text-anchor="middle" class="stage">11 · Settled views</text>
+  <rect x="430" y="1815" width="1250" height="160" rx="12" class="card"/>
+  <text x="460" y="1852" class="path">GET /events/{id}</text>
+  <text x="460" y="1882" class="path">GET /events/{id}/shares</text>
+  <text x="460" y="1912" class="path">GET /events/{id}/transfers</text>
+  <text x="460" y="1942" class="path">GET /events/{id}/me/details</text>
+  <text x="1030" y="1852" class="note">Participants use /me/details for their own final flows.</text>
+  <text x="1030" y="1882" class="note">There are no payment-confirmation or “paid” APIs.</text>
+
+  <!-- 12 -->
+  <rect x="90" y="2020" width="280" height="58" rx="14" class="archive"/>
+  <text x="230" y="2057" text-anchor="middle" class="stage">12 · Archive</text>
+  <rect x="430" y="2000" width="1250" height="130" rx="12" class="card"/>
+  <text x="460" y="2040" class="path">POST /events/{id}/archive</text>
+  <text x="460" y="2075" class="note">Host-only; requires settlement. The event becomes fully read-only.</text>
+  <text x="460" y="2105" class="note">Afterward, all members can read complete shares and transfers.</text>
+
+  <!-- 13 -->
+  <rect x="90" y="2175" width="280" height="58" rx="14" class="archive"/>
+  <text x="230" y="2212" text-anchor="middle" class="stage">13 · Archived views</text>
+  <rect x="430" y="2155" width="1250" height="100" rx="12" class="card"/>
+  <text x="460" y="2195" class="path">GET /events/{id}/shares</text>
+  <text x="900" y="2195" class="path">GET /events/{id}/transfers</text>
+  <text x="460" y="2230" class="note">Read-only final results; no further mutation endpoints are valid.</text>
+
+  <!-- client-only legend -->
+  <rect x="90" y="2300" width="1590" height="115" rx="12" fill="#fff7ed" stroke="#fdba74" stroke-width="2"/>
+  <text x="120" y="2340" class="label">Client-only / no backend call</text>
+  <text x="120" y="2372" class="note">Real-time preview can run in the frontend split engine. QR images are rendered by the frontend;</text>
+  <text x="120" y="2400" class="note">the backend only validates the invite code. “Atomic Commit” is a product concept, not a current batch API.</text>
+
+  <text x="90" y="2470" class="small">Generated from the current route registrations and docs/frontend-api-guide.md. Paths omit the API host.</text>
+</svg>
