@@ -31,3 +31,9 @@ variable "google_client_id" {
   default     = ""
   sensitive   = true
 }
+
+variable "allowed_origins" {
+  type        = string
+  description = "Comma-separated browser origins allowed for credentialed CORS (scheme + host + port, no path)"
+  default     = "https://go-split.vercel.app,http://localhost:3000"
+}

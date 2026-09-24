@@ -189,6 +189,11 @@ resource "google_cloud_run_v2_service" "go_backend" {
       }
 
       env {
+        name  = "ALLOWED_ORIGINS"
+        value = var.allowed_origins
+      }
+
+      env {
         name = "GOOGLE_CLIENT_ID"
         value_source {
           secret_key_ref {
