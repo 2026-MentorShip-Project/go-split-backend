@@ -18,6 +18,9 @@ Table of contents
 - Demo site: https://go-split.github.io/Go-Split/
 - UML: https://github.com/Go-Split/Go-Split/blob/main/UML.pdf
 
+## Online
+- swagger: https://go-backend-api-605450358080.asia-east1.run.app/swagger/index.html#/
+
 ## Prerequisite
 
 * [go](https://formulae.brew.sh/formula/go)
