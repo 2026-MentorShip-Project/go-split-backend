@@ -1,0 +1,191 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="3000" viewBox="0 0 2200 3000">
+  <style>
+    .title { font: 700 38px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; fill: #172033 }
+    .sub { font: 18px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; fill: #596579 }
+    .section { font: 700 22px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; fill: #fff }
+    .uml { font: 700 20px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; fill: #172033 }
+    .api { font: 16px ui-monospace,SFMono-Regular,Menlo,monospace; fill: #173b66 }
+    .wasm { font: 16px ui-monospace,SFMono-Regular,Menlo,monospace; fill: #5b3b86 }
+    .desc { font: 16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; fill: #596579 }
+    .gap { font: 700 16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; fill: #9a3412 }
+    .small { font: 14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; fill: #596579 }
+    .card { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 2 }
+    .client { fill: #eef2ff; stroke: #a5b4fc; stroke-width: 2 }
+    .missing { fill: #fff7ed; stroke: #fb923c; stroke-width: 2 }
+    .auth { fill: #315c9b }
+    .event { fill: #247a68 }
+    .write { fill: #b56b18 }
+    .settle { fill: #7c4d9b }
+    .archive { fill: #3e5969 }
+    .line { stroke: #94a3b8; stroke-width: 2 }
+    .arrow { stroke: #64748b; stroke-width: 3; fill: none; marker-end: url(#arrow) }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L10,3 L0,6 Z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <rect width="2200" height="3000" fill="#fff"/>
+  <text x="80" y="70" class="title">Go-Split UML 操作 → Backend endpoint / WASM 對照圖</text>
+  <text x="80" y="108" class="sub">逐項對照 UML.pdf；橘色 = 缺口，藍色 = backend，紫色 = split-engine WASM，淡藍色 = 前端行為</text>
+
+  <!-- column headers -->
+  <rect x="80" y="145" width="470" height="52" rx="10" class="auth"/>
+  <rect x="570" y="145" width="900" height="52" rx="10" class="event"/>
+  <rect x="1490" y="145" width="630" height="52" rx="10" class="settle"/>
+  <text x="315" y="179" text-anchor="middle" class="section">UML 操作（中文）</text>
+  <text x="1020" y="179" text-anchor="middle" class="section">對應實作</text>
+  <text x="1805" y="179" text-anchor="middle" class="section">說明 / 缺口</text>
+
+  <!-- auth -->
+  <rect x="80" y="220" width="2040" height="370" rx="14" class="card"/>
+  <rect x="100" y="240" width="430" height="62" rx="10" class="auth"/>
+  <text x="315" y="279" text-anchor="middle" class="section">啟動分帳吧 → 檢查 Session/登入狀態</text>
+  <text x="600" y="263" class="api">GET /events</text>
+  <text x="600" y="292" class="desc">200 = 有效；401 = 進入 Entry</text>
+  <text x="1515" y="263" class="gap">缺口：沒有 GET /auth/session</text>
+  <text x="1515" y="292" class="desc">目前用活動列表作為 session probe。</text>
+
+  <line x1="100" y1="320" x2="2100" y2="320" class="line"/>
+  <text x="110" y="355" class="uml">進入頁面 Entry</text>
+  <text x="600" y="345" class="desc">前端 route；沒有獨立 backend endpoint</text>
+  <text x="600" y="375" class="api">GET /auth/invite/{code}（可選）</text>
+  <text x="1515" y="345" class="desc">只用來預覽活動名稱與條件；POST /auth/join 會再次驗證 code。</text>
+
+  <line x1="100" y1="405" x2="2100" y2="405" class="line"/>
+  <text x="110" y="440" class="uml">主辦人：Google 登入 OAuth</text>
+  <text x="600" y="430" class="api">POST /auth/google</text>
+  <text x="600" y="460" class="desc">body: { id_token }；回 session cookie</text>
+  <text x="1515" y="430" class="desc">OAuth 取得 token 是前端/Google 流程；backend 驗證 token。</text>
+
+  <line x1="100" y1="490" x2="2100" y2="490" class="line"/>
+  <text x="110" y="525" class="uml">首次加入：輸入邀請碼 + Email + 手機</text>
+  <text x="600" y="515" class="api">POST /auth/join</text>
+  <text x="600" y="545" class="desc">建立 guest identity、加入活動、回 session cookie</text>
+  <text x="1515" y="515" class="desc">GET /auth/invite/{code} 不是必要步驟。</text>
+
+  <!-- join/recovery -->
+  <rect x="80" y="615" width="2040" height="260" rx="14" class="card"/>
+  <text x="110" y="660" class="uml">遺失找回：輸入三資料找回身分</text>
+  <text x="600" y="650" class="api">POST /auth/recover</text>
+  <text x="600" y="680" class="desc">code + email + phone → 新 session cookie</text>
+  <text x="1515" y="650" class="desc">找回 guest session；不是密碼重設流程。</text>
+  <line x1="100" y1="710" x2="2100" y2="710" class="line"/>
+  <text x="110" y="750" class="uml">活動列表 Home</text>
+  <text x="600" y="740" class="api">GET /events</text>
+  <text x="1515" y="740" class="desc">回傳活動、角色、人數、settled、archived。</text>
+  <line x1="100" y1="780" x2="2100" y2="780" class="line"/>
+  <text x="110" y="820" class="uml">主辦人：建立活動 + 選擇情境模板</text>
+  <text x="600" y="810" class="api">GET /templates（可選）</text>
+  <text x="600" y="840" class="api">POST /events</text>
+  <text x="1515" y="810" class="desc">建立活動 response 直接包含 invite_code。</text>
+
+  <!-- dashboard -->
+  <rect x="80" y="900" width="2040" height="370" rx="14" class="card"/>
+  <rect x="100" y="920" width="430" height="62" rx="10" class="event"/>
+  <text x="315" y="959" text-anchor="middle" class="section">活動主頁 Event Dashboard</text>
+  <text x="600" y="945" class="api">GET /events/{id}</text>
+  <text x="600" y="975" class="desc">metadata + my_role + members + items + total + 狀態</text>
+  <text x="1515" y="945" class="desc">這是主要聚合讀取 endpoint；不需先打所有子 endpoint。</text>
+  <line x1="100" y1="1005" x2="2100" y2="1005" class="line"/>
+  <text x="110" y="1045" class="uml">角色與權限判斷</text>
+  <text x="600" y="1035" class="api">GET /events/{id} → my_role</text>
+  <text x="600" y="1065" class="api">GET /events/{id}/members/{member_id}/role</text>
+  <text x="1515" y="1035" class="desc">backend middleware 強制 host / co / member 權限。</text>
+  <line x1="100" y1="1095" x2="2100" y2="1095" class="line"/>
+  <text x="110" y="1135" class="uml">群組人員設定（Host）</text>
+  <text x="600" y="1125" class="api">GET/POST/PATCH/DELETE /events/{id}/members...</text>
+  <text x="600" y="1155" class="api">POST /events/{id}/members/{placeholder_id}/bind</text>
+  <text x="1515" y="1125" class="desc">新增、編輯、刪除、綁定 virtual member。</text>
+  <line x1="100" y1="1185" x2="2100" y2="1185" class="line"/>
+  <text x="110" y="1225" class="uml">Participant 唯讀檢視</text>
+  <text x="600" y="1215" class="api">GET /events/{id}</text>
+  <text x="600" y="1245" class="api">GET /events/{id}/items · GET /events/{id}/shares</text>
+  <text x="1515" y="1215" class="desc">settlement 後個人明細改用 /me/details。</text>
+
+  <!-- editing -->
+  <rect x="80" y="1295" width="2040" height="480" rx="14" class="card"/>
+  <rect x="100" y="1315" width="430" height="62" rx="10" class="write"/>
+  <text x="315" y="1354" text-anchor="middle" class="section">Co-host：記帳新增 / 編輯款項</text>
+  <text x="600" y="1340" class="api">GET /events/{id}/items</text>
+  <text x="600" y="1370" class="api">POST /events/{id}/items</text>
+  <text x="600" y="1400" class="api">PATCH /events/{id}/items/{item_id}</text>
+  <text x="600" y="1430" class="api">DELETE /events/{id}/items/{item_id}</text>
+  <text x="1515" y="1340" class="desc">每筆 item request 各自驗證與儲存。</text>
+  <line x1="100" y1="1460" x2="2100" y2="1460" class="line"/>
+  <text x="110" y="1500" class="uml">前端草稿層 Form Draft</text>
+  <rect x="600" y="1478" width="630" height="70" rx="10" class="client"/>
+  <text x="630" y="1510" class="desc">前端 state / draft；目前沒有 draft endpoint</text>
+  <text x="1515" y="1500" class="gap">缺口：沒有 batch draft API</text>
+  <text x="1515" y="1530" class="desc">只能等提交時呼叫 item endpoints。</text>
+  <line x1="100" y1="1580" x2="2100" y2="1580" class="line"/>
+  <text x="110" y="1620" class="uml">分攤規則設定 Rules</text>
+  <text x="600" y="1610" class="api">GET/POST/PATCH/DELETE /events/{id}/rules...</text>
+  <text x="600" y="1640" class="api">GET/POST/PATCH/DELETE /events/{id}/tags/{items|conds}...</text>
+  <text x="1515" y="1610" class="desc">規則與 tag catalog 的讀寫由 host 控制。</text>
+  <line x1="100" y1="1680" x2="2100" y2="1680" class="line"/>
+  <text x="110" y="1720" class="uml">即時預覽</text>
+  <text x="600" y="1710" class="wasm">await initEngine()</text>
+  <text x="600" y="1740" class="wasm">splitDetail({ detail, members, rules, split_order })</text>
+  <text x="1515" y="1710" class="desc">WASM 是同步本地計算，不儲存、不 settle。</text>
+
+  <!-- commit/validation -->
+  <rect x="80" y="1800" width="2040" height="430" rx="14" class="missing"/>
+  <rect x="100" y="1820" width="430" height="62" rx="10" class="write"/>
+  <text x="315" y="1859" text-anchor="middle" class="section">整筆提交 Atomic Commit</text>
+  <text x="600" y="1845" class="gap">GAP：目前不存在整筆提交 endpoint</text>
+  <text x="600" y="1878" class="desc">現況：多次 POST/PATCH /events/{id}/items，各 request 個別成功或失敗。</text>
+  <text x="1515" y="1845" class="gap">未實作</text>
+  <text x="1515" y="1875" class="desc">若要符合 UML，需新增 batch draft/commit transaction。</text>
+  <line x1="100" y1="1910" x2="2100" y2="1910" class="line"/>
+  <text x="110" y="1950" class="uml">全掃驗證</text>
+  <text x="600" y="1940" class="api">POST /events/{id}/settle</text>
+  <text x="600" y="1970" class="desc">server 重新計算全活動 shares，檢查 invalid split，建立 snapshot。</text>
+  <text x="1515" y="1940" class="desc">這是目前唯一的全活動原子檢查點；它同時會 freeze。</text>
+  <line x1="100" y1="2000" x2="2100" y2="2000" class="line"/>
+  <text x="110" y="2040" class="uml">異常：除零 / 金額不符</text>
+  <rect x="600" y="2018" width="630" height="68" rx="10" class="client"/>
+  <text x="630" y="2050" class="desc">前端顯示紅框與筆數摘要；WASM validity/diff 可供提示</text>
+  <text x="1515" y="2040" class="desc">settle 錯誤回 422；item mutation 錯誤回 4xx。</text>
+  <line x1="100" y1="2110" x2="2100" y2="2110" class="line"/>
+  <text x="110" y="2150" class="uml">成功 → 更新全域 Store</text>
+  <rect x="600" y="2128" width="630" height="68" rx="10" class="client"/>
+  <text x="630" y="2160" class="desc">前端 store 更新；建議重新 GET event/shares</text>
+  <text x="1515" y="2150" class="desc">沒有獨立 store endpoint。</text>
+
+  <!-- settlement -->
+  <rect x="80" y="2255" width="2040" height="390" rx="14" class="card"/>
+  <rect x="100" y="2275" width="430" height="62" rx="10" class="settle"/>
+  <text x="315" y="2314" text-anchor="middle" class="section">Host：分帳產出 / 確認結帳</text>
+  <text x="600" y="2300" class="api">GET /events/{id}/shares</text>
+  <text x="600" y="2330" class="api">GET /events/{id}/transfers</text>
+  <text x="600" y="2360" class="api">PATCH /events/{id}/settlement-note</text>
+  <text x="600" y="2390" class="api">POST /events/{id}/settle</text>
+  <text x="1515" y="2300" class="desc">H1、L10 與確認結帳目前由這組 endpoint 完成。</text>
+  <text x="1515" y="2330" class="desc">L10 hub 計算在 server 內部；沒有獨立 Hub endpoint。</text>
+  <line x1="100" y1="2420" x2="2100" y2="2420" class="line"/>
+  <text x="110" y="2460" class="uml">結帳後活動頁 H2</text>
+  <text x="600" y="2450" class="api">GET /events/{id}</text>
+  <text x="1515" y="2450" class="desc">settled = true；邀請與寫入被鎖定。</text>
+  <line x1="100" y1="2490" x2="2100" y2="2490" class="line"/>
+  <text x="110" y="2530" class="uml">參與者 / 協辦：檢視個人收支明細</text>
+  <text x="600" y="2520" class="api">GET /events/{id}/me/details</text>
+  <text x="1515" y="2520" class="desc">只回傳目前登入者相關的 transfers 與 lines。</text>
+
+  <!-- archive / gap -->
+  <rect x="80" y="2690" width="2040" height="245" rx="14" class="missing"/>
+  <text x="110" y="2735" class="uml">主辦人：付款流向清單 H3</text>
+  <text x="600" y="2725" class="api">GET /events/{id}/transfers</text>
+  <text x="1515" y="2725" class="desc">settle 後 host 可讀完整 transfers。</text>
+  <line x1="100" y1="2760" x2="2100" y2="2760" class="line"/>
+  <text x="110" y="2800" class="uml">平台外私下確認款項 C31</text>
+  <text x="600" y="2790" class="gap">GAP：沒有 payment-confirmation / paid endpoint</text>
+  <text x="1515" y="2790" class="desc">依 PRD C31，這是平台外行為，故刻意不實作。</text>
+  <line x1="100" y1="2825" x2="2100" y2="2825" class="line"/>
+  <text x="110" y="2865" class="uml">結清活動 → 封存 Archived J區 → 全區完全唯讀</text>
+  <text x="600" y="2855" class="api">POST /events/{id}/archive</text>
+  <text x="600" y="2885" class="desc">之後 GET /events/{id}/shares、/transfers 可由所有成員讀完整結果。</text>
+
+  <text x="80" y="2980" class="small">來源：UML.pdf、backend route registrations、packages/split-engine/src/index.js。路徑省略 API host。</text>
+</svg>

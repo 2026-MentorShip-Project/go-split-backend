@@ -107,6 +107,7 @@ func createEventTx(ctx context.Context, db database.Store, accountID int64, req 
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var content templateContent
+	// TODO: replace hard-coded template names with a query to the templates table, and allow the user to create their own templates.
 	if req.Template != "自訂" {
 		content, err = loadTemplateContent(ctx, tx, req.Template)
 		if errors.Is(err, pgx.ErrNoRows) {
