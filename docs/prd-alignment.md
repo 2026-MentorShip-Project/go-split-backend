@@ -68,7 +68,7 @@ Subsequent product decisions remove event scheduling and add settlement notes an
 
 All 28 backend gaps above are implemented. Frontend-only work in the scope boundary remains outside this repository; the demo was reviewed as a reference, not modified or deployed.
 
-- Accounts: `POST /auth/google` accepts a Google ID token. `/auth/register` and `/auth/login` are removed. Unverified email returns `401 google_email_unverified`; timeout returns `504 google_timeout`.
+- Accounts: `POST /auth/google` accepts a Google ID token. `/auth/register` and `/auth/login` (email + password) exist only for testing. Unverified email returns `401 google_email_unverified`; timeout returns `504 google_timeout`.
 - Join: `GET /auth/invite/{code}` supplies event name and `cond_tags` before first join; invalid codes return 404 and closed invitations 410. `POST /auth/join` accepts `code`, `email`, numeric `phone`, `name`, optional `cond_tags` and `note`. Existing sessions use `/events/join`. Only the host can edit conditions afterward.
 - Metadata: `PATCH /events/{id}` replaces name/place/start/end metadata. Send the complete metadata form; template cannot change after creation. Placeholder templates create empty settings and are marked `soon` in the catalog.
 - Expenses: `amount`, `total`, `grand_total`, `owed`, `advanced`, `net` and `custom_amounts` are whole NT dollars. A missing/null amount, fractional amount or legacy `amount_cents` field is rejected. Empty cards are valid. Detail drafts use `tag`; engine input uses `item_tag`.

@@ -76,7 +76,7 @@ func TestEventJourney(t *testing.T) {
 	seedAccount(t, host, s.URL, account)
 	request(t, host, "POST", s.URL+"/auth/logout", nil, 204, nil)
 	request(t, host, "GET", s.URL+"/events", nil, 401, nil)
-	request(t, host, "POST", s.URL+"/auth/login", account, 404, nil)
+	request(t, host, "POST", s.URL+"/auth/login", account, 401, nil)
 	seedAccount(t, host, s.URL, account)
 	var event struct {
 		ID         int64  `json:"id"`

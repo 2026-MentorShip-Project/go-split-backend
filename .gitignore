@@ -70,3 +70,5 @@ docs/swagger.yaml
 /artifacts/
 
 cloud-sql-proxy
+
+.gitconfig

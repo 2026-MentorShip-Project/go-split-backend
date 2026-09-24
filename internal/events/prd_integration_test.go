@@ -106,8 +106,13 @@ func (a *prdAPI) host(t *testing.T) string {
 func TestPRDLifecycle(t *testing.T) {
 	a := newPRDAPI(t)
 	host := a.host(t)
-	a.call(t, "", "POST", "/auth/register", gin.H{}, 404)
-	a.call(t, "", "POST", "/auth/login", gin.H{}, 404)
+	a.call(t, "", "POST", "/auth/register", gin.H{}, 400)
+	a.call(t, "", "POST", "/auth/login", gin.H{}, 400)
+	pw := gin.H{"name": "Password user", "email": "password@example.com", "password": "password123"}
+	a.call(t, "", "POST", "/auth/register", pw, 201)
+	a.call(t, "", "POST", "/auth/register", pw, 409)
+	a.call(t, "", "POST", "/auth/login", gin.H{"email": pw["email"], "password": "wrong-password"}, 401)
+	a.call(t, "", "POST", "/auth/login", gin.H{"email": pw["email"], "password": pw["password"]}, 200)
 	e := decodePRD[createEventResponse](t, a.call(t, host, "POST", "/events", gin.H{"name": "PRD", "template": "自訂"}, 201))
 	base := fmt.Sprintf("/events/%d", e.ID)
 	a.call(t, "", "GET", "/auth/invite/"+e.InviteCode, nil, 200)
