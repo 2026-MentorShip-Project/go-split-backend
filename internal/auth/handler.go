@@ -26,6 +26,7 @@ func New(db database.Store, google GoogleVerifier) *Handler {
 func (h *Handler) Register(r gin.IRouter) {
 	g := r.Group("/auth")
 	g.POST("/google", h.PostGoogle)
+	h.registerPasswordRoutes(g)
 	g.DELETE("/", RequireSession(h.DB), h.DeleteAccount)
 	h.registerGuestRoutes(g)
 }
