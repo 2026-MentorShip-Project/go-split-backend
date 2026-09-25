@@ -19,6 +19,7 @@ import (
 	"go-split-backend/internal/httpx"
 
 	"github.com/gin-gonic/gin"
+	"github.com/grafana/pyroscope-go"
 	log "github.com/sirupsen/logrus"
 	swaggerfiles "github.com/swaggo/files"
 	ginswagger "github.com/swaggo/gin-swagger"
@@ -34,6 +35,9 @@ import (
 //go:generate swag init -d ../../ -g cmd/go-split-backend/server.go -o ../../docs
 
 func main() {
+	stopProfiler := startProfiler()
+	defer stopProfiler()
+
 	ctx := context.Background()
 	db, err := database.Open(ctx)
 	if err != nil {
@@ -83,6 +87,43 @@ func main() {
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit
 	log.Info("Shutting down server ...")
+}
+
+func profilerConfig(getenv func(string) string) (pyroscope.Config, bool) {
+	address := getenv("PYROSCOPE_SERVER_ADDRESS")
+	if address == "" {
+		return pyroscope.Config{}, false
+	}
+
+	name := getenv("PYROSCOPE_APPLICATION_NAME")
+	if name == "" {
+		name = "go-split-backend"
+	}
+	return pyroscope.Config{
+		ApplicationName:   name,
+		ServerAddress:     address,
+		BasicAuthUser:     getenv("PYROSCOPE_USERNAME"),
+		BasicAuthPassword: getenv("PYROSCOPE_PASSWORD"),
+		ProfileTypes:      []pyroscope.ProfileType{pyroscope.ProfileCPU},
+	}, true
+}
+
+func startProfiler() func() {
+	config, enabled := profilerConfig(os.Getenv)
+	if !enabled {
+		return func() {}
+	}
+
+	profiler, err := pyroscope.Start(config)
+	if err != nil {
+		log.WithError(err).Warn("failed to start continuous profiler")
+		return func() {}
+	}
+	return func() {
+		if err := profiler.Stop(); err != nil {
+			log.WithError(err).Warn("failed to stop continuous profiler")
+		}
+	}
 }
 
 func jsonRecoveryHandler(ctx *gin.Context, recovered any) {

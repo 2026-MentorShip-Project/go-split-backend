@@ -51,6 +51,11 @@ for Postgres. Set `GOOGLE_CLIENT_ID` to the OAuth client ID your frontend uses
 for Google Sign-In to enable `POST /auth/google`; when it is unset that
 endpoint answers 503.
 
+To enable continuous CPU profiling, set `PYROSCOPE_SERVER_ADDRESS`. Optional
+`PYROSCOPE_APPLICATION_NAME`, `PYROSCOPE_USERNAME`, and `PYROSCOPE_PASSWORD`
+configure the service name and basic authentication for the Pyroscope server.
+Profiling is disabled when the server address is unset.
+
 
 ### Run locally
 
