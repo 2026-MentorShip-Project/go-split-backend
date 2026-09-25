@@ -51,6 +51,11 @@ for Postgres. Set `GOOGLE_CLIENT_ID` to the OAuth client ID your frontend uses
 for Google Sign-In to enable `POST /auth/google`; when it is unset that
 endpoint answers 503.
 
+Continuous CPU profiling is enabled when `PGO_GCS_BUCKET` is set. The Cloud
+Run deployment supplies this from the PGO bucket created by Terraform; local
+runs remain disabled unless a bucket is configured and Google credentials are
+available.
+
 
 ### Run locally
 

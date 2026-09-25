@@ -17,6 +17,7 @@ import (
 	"go-split-backend/internal/database"
 	"go-split-backend/internal/events"
 	"go-split-backend/internal/httpx"
+	"go-split-backend/internal/profiling"
 
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
@@ -35,6 +36,14 @@ import (
 
 func main() {
 	ctx := context.Background()
+	stopProfiler := func() {}
+	if stop, err := profiling.Start(ctx); err != nil {
+		log.WithError(err).Warn("failed to start CPU profiler")
+	} else {
+		stopProfiler = stop
+	}
+	defer stopProfiler()
+
 	db, err := database.Open(ctx)
 	if err != nil {
 		log.Fatalf("Failed to connect to database, err: %v", err)

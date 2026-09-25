@@ -194,6 +194,11 @@ resource "google_cloud_run_v2_service" "go_backend" {
       }
 
       env {
+        name  = "PGO_GCS_BUCKET"
+        value = google_storage_bucket.pgo_profiles.name
+      }
+
+      env {
         name = "GOOGLE_CLIENT_ID"
         value_source {
           secret_key_ref {
