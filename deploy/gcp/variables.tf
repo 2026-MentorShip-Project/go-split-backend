@@ -19,6 +19,11 @@ variable "gar_repository_id" {
   description = "The ID of the Artifact Registry repository"
 }
 
+variable "pgo_bucket_name" {
+  type        = string
+  description = "Globally unique GCS bucket name for CPU profiles"
+}
+
 variable "db_password" {
   type        = string
   description = "Password for the application PostgreSQL user"
