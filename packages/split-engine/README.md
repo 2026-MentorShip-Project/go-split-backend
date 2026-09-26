@@ -44,6 +44,26 @@ Use validated R1 inputs, integer NT dollars, safe JavaScript integer IDs/amounts
 
 Results include shares, exclusions, traces and validity: `ok`, `no-participant`, `custom-overflow`, or `custom-mismatch`. TypeScript declarations are included.
 
+## Checking a rule before saving
+
+`validateRule()` applies the same checks the backend applies on save, so a draft rule can be corrected without a round trip.
+
+```js
+import { initEngine, validateRule } from '@go-split/engine';
+
+await initEngine();
+validateRule({
+  groups: [{ conds: ['vegan'], mode: 'exclude' }],
+  rest: { mode: 'weight', weight: 1 },
+  cond_tags: ['vegan', 'kid']
+});
+// { ok: true, groups: [{ conds: ['vegan'], mode: 'exclude', weight: 0 }], rest: { mode: 'weight', weight: 1 } }
+```
+
+A refused rule is a result, not an exception: `{ ok: false, code, detail }`. Codes are stable — `invalid-groups`, `invalid-rest`, `empty-cond-set`, `duplicate-cond-set`, `unknown-cond`, `invalid-mode`, `invalid-weight` — so callers can show their own wording instead of the English `detail`. Only a malformed call throws.
+
+On success the returned `groups` and `rest` are normalized exactly as the backend would store them: an omitted weight becomes 1, weight 0 becomes `exclude`, and an omitted `rest` becomes weight 1. Pass the event's condition tag catalog as `cond_tags`; a rule may only reference tags it contains. Checks needing the database — whether the item tag exists, whether expenses already use it, whether a rule for that tag exists — remain server-side, so saving can still be refused.
+
 ## Build in the backend repository
 
 ```sh

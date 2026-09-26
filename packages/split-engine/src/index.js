@@ -3,6 +3,7 @@ export { engineVersion };
 
 let initialization;
 let split;
+let validate;
 let runtimeError;
 
 /** Load once before previewing. Importing this module alone is safe during SSR. */
@@ -17,6 +18,7 @@ async function start({ wasmURL = new URL('./engine.wasm', import.meta.url), wasm
   if (typeof globalThis.goSplitDetail === 'function') {
     checkVersion();
     split = globalThis.goSplitDetail;
+    validate = globalThis.goSplitValidateRule;
     return;
   }
   await import('./wasm_exec.js');
@@ -34,8 +36,11 @@ async function start({ wasmURL = new URL('./engine.wasm', import.meta.url), wasm
     error => { runtimeError = error; }
   );
   checkVersion();
-  if (typeof globalThis.goSplitDetail !== 'function') throw new Error('Split engine did not initialize');
+  if (typeof globalThis.goSplitDetail !== 'function' || typeof globalThis.goSplitValidateRule !== 'function') {
+    throw new Error('Split engine did not initialize');
+  }
   split = globalThis.goSplitDetail;
+  validate = globalThis.goSplitValidateRule;
 }
 
 function checkVersion() {
@@ -49,6 +54,19 @@ export function splitDetail(input) {
   if (runtimeError) throw runtimeError;
   if (!split) throw new Error('Call and await initEngine() before splitDetail()');
   const result = JSON.parse(split(JSON.stringify(input)));
+  if (result.error) throw new Error(result.error);
+  return result;
+}
+
+/**
+ * Applies the checks a save applies, without contacting the backend. A refused
+ * rule comes back as { ok: false } with a stable code; only a malformed call
+ * throws. The backend still validates authoritatively when the rule is saved.
+ */
+export function validateRule(input) {
+  if (runtimeError) throw runtimeError;
+  if (!validate) throw new Error('Call and await initEngine() before validateRule()');
+  const result = JSON.parse(validate(JSON.stringify(input)));
   if (result.error) throw new Error(result.error);
   return result;
 }

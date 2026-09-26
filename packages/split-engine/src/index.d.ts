@@ -41,5 +41,25 @@ export interface InitOptions {
   /** For tests, Node, or applications that load the binary themselves. */
   wasmBytes?: ArrayBuffer | Uint8Array;
 }
+export type RuleIssueCode =
+  | 'invalid-groups'
+  | 'invalid-rest'
+  | 'empty-cond-set'
+  | 'duplicate-cond-set'
+  | 'unknown-cond'
+  | 'invalid-mode'
+  | 'invalid-weight';
+export interface ValidateRuleInput {
+  /** Condition sets in priority order; the first match decides a member's weight. */
+  groups: Group[];
+  /** Fallback for members no group matched. Omitted means weight 1. */
+  rest?: Group | null;
+  /** The event's condition tag catalog; a rule may only reference these. */
+  cond_tags: string[];
+}
+export type ValidateRuleResult =
+  | { ok: true; groups: Group[]; rest: Group }
+  | { ok: false; code: RuleIssueCode; detail: string };
 export function initEngine(options?: InitOptions): Promise<void>;
 export function splitDetail(input: SplitInput): SplitResult;
+export function validateRule(input: ValidateRuleInput): ValidateRuleResult;
