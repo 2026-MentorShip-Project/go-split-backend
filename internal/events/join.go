@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"go-split-backend/internal/database"
+	"go-split-backend/internal/rulespec"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
@@ -107,7 +108,7 @@ func (h *Handler) PostJoin(c *gin.Context) {
 		respondErr(c, 500, "load conditions")
 		return
 	}
-	if err = validateConditions(req.CondTags, catalog); err != nil {
+	if err = rulespec.ValidateConditions(req.CondTags, catalog); err != nil {
 		respondErr(c, 400, err.Error())
 		return
 	}

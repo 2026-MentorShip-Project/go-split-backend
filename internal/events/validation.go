@@ -2,11 +2,8 @@ package events
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"go-split-backend/internal/database"
 	"go-split-backend/internal/splitengine"
-	"math"
 	"strconv"
 	"strings"
 )
@@ -108,95 +105,4 @@ func stringIn(a []string, s string) bool {
 		}
 	}
 	return false
-}
-func validateConditions(tags, catalog []string) error {
-	seen := map[string]bool{}
-	for _, t := range tags {
-		if !stringIn(catalog, t) || seen[t] {
-			return fmt.Errorf("unknown or duplicate condition: %s", t)
-		}
-		seen[t] = true
-	}
-	return nil
-}
-func normalizeRule(groups, rest json.RawMessage, catalog []string) (json.RawMessage, json.RawMessage, error) {
-	var in []inputGroup
-	if err := json.Unmarshal(groups, &in); err != nil {
-		return nil, nil, fmt.Errorf("groups must be an array")
-	}
-	if in == nil {
-		return nil, nil, fmt.Errorf("groups must be an array")
-	}
-	out := []splitengine.Group{}
-	sets := map[string]bool{}
-	for _, g := range in {
-		n, err := normalizeGroup(g, true, catalog)
-		if err != nil {
-			return nil, nil, err
-		}
-		keyTags := append([]string(nil), g.Conds...)
-		sortStrings(keyTags)
-		key := strings.Join(keyTags, "\x00")
-		if sets[key] {
-			return nil, nil, fmt.Errorf("duplicate condition set")
-		}
-		sets[key] = true
-		out = append(out, n)
-	}
-	r := splitengine.Group{Mode: "weight", Weight: 1}
-	if len(rest) > 0 && string(rest) != "null" {
-		var input inputGroup
-		if err := json.Unmarshal(rest, &input); err != nil {
-			return nil, nil, fmt.Errorf("invalid rest")
-		}
-		var err error
-		r, err = normalizeGroup(input, false, catalog)
-		if err != nil {
-			return nil, nil, err
-		}
-	}
-	gb, _ := json.Marshal(out)
-	rb, _ := json.Marshal(r)
-	return gb, rb, nil
-}
-func sortStrings(a []string) {
-	for i := 1; i < len(a); i++ {
-		for j := i; j > 0 && a[j] < a[j-1]; j-- {
-			a[j], a[j-1] = a[j-1], a[j]
-		}
-	}
-}
-
-type inputGroup struct {
-	Conds  []string `json:"conds"`
-	Mode   string   `json:"mode"`
-	Weight *float64 `json:"weight"`
-}
-
-func normalizeGroup(g inputGroup, condition bool, catalog []string) (splitengine.Group, error) {
-	if g.Mode != "weight" && g.Mode != "exclude" {
-		return splitengine.Group{}, fmt.Errorf("mode must be weight or exclude")
-	}
-	if condition {
-		if len(g.Conds) == 0 {
-			return splitengine.Group{}, fmt.Errorf("condition set must not be empty")
-		}
-		if err := validateConditions(g.Conds, catalog); err != nil {
-			return splitengine.Group{}, err
-		}
-	}
-	w := 1.0
-	if g.Weight != nil {
-		w = *g.Weight
-	}
-	if w == 0 {
-		g.Mode = "exclude"
-	}
-	if g.Mode == "weight" && (w < .1 || w > 100 || math.Abs(w*10-math.Round(w*10)) > 1e-8) {
-		return splitengine.Group{}, fmt.Errorf("weight must be 0.1–100 with at most one decimal")
-	}
-	if g.Mode == "exclude" {
-		w = 0
-	}
-	return splitengine.Group{Conds: g.Conds, Mode: g.Mode, Weight: w}, nil
 }
