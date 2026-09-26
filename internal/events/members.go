@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"go-split-backend/internal/auth"
+	"go-split-backend/internal/rulespec"
 )
 
 func (h *Handler) registerMemberRoutes(g *gin.RouterGroup) {
@@ -98,7 +99,7 @@ func (h *Handler) PostMember(c *gin.Context) {
 		respondErr(c, 500, "load conditions")
 		return
 	}
-	if err = validateConditions(req.Tags, catalog); err != nil {
+	if err = rulespec.ValidateConditions(req.Tags, catalog); err != nil {
 		respondErr(c, 400, err.Error())
 		return
 	}
@@ -173,7 +174,7 @@ func (h *Handler) PatchMember(c *gin.Context) {
 			respondErr(c, 500, "load conditions")
 			return
 		}
-		if err = validateConditions(*req.Tags, catalog); err != nil {
+		if err = rulespec.ValidateConditions(*req.Tags, catalog); err != nil {
 			respondErr(c, 400, err.Error())
 			return
 		}

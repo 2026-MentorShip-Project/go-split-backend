@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"go-split-backend/internal/database"
+	"go-split-backend/internal/rulespec"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
@@ -451,7 +452,7 @@ func (h *Handler) PostRule(c *gin.Context) {
 		c.JSON(409, gin.H{"error": "item tag is already used by expenses", "count": used})
 		return
 	}
-	req.Groups, req.Rest, err = normalizeRule(req.Groups, req.Rest, catalog)
+	req.Groups, req.Rest, err = rulespec.NormalizeRule(req.Groups, req.Rest, catalog)
 	if err != nil {
 		respondErr(c, 400, err.Error())
 		return
@@ -534,7 +535,7 @@ func (h *Handler) PatchRule(c *gin.Context) {
 		respondErr(c, 500, "load conditions")
 		return
 	}
-	groups, rest, err := normalizeRule(currentGroups, currentRest, catalog)
+	groups, rest, err := rulespec.NormalizeRule(currentGroups, currentRest, catalog)
 	if err != nil {
 		respondErr(c, 400, err.Error())
 		return
