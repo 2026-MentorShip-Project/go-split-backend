@@ -35,6 +35,8 @@ type createEventRequest struct {
 	Name     string `json:"name"                binding:"required,min=1,max=120"`
 	Place    string `json:"place"               binding:"max=200"`
 	Template string `json:"template"            binding:"required"`
+	StartsAt string `json:"starts_at"           example:"2026-09-27"`
+	EndsAt   string `json:"ends_at"             example:"2026-09-28"`
 }
 
 type createEventResponse struct {
@@ -42,6 +44,8 @@ type createEventResponse struct {
 	Name       string `json:"name"`
 	Place      string `json:"place"`
 	Template   string `json:"template"`
+	StartsAt   string `json:"starts_at"`
+	EndsAt     string `json:"ends_at"`
 	InviteCode string `json:"invite_code"`
 }
 
@@ -76,6 +80,27 @@ func (h *Handler) PostEvent(c *gin.Context) {
 		respondErr(c, 400, "name is required")
 		return
 	}
+
+	starts, err := parseDate(strings.TrimSpace(req.StartsAt))
+	if err != nil {
+		respondErr(c, 400, "invalid starts_at: "+err.Error())
+		return
+	}
+	ends, err := parseDate(strings.TrimSpace(req.EndsAt))
+	if err != nil {
+		respondErr(c, 400, "invalid ends_at: "+err.Error())
+		return
+	}
+	if starts == nil {
+		start := today()
+		starts = &start
+	}
+	if ends != nil && ends.Before(*starts) {
+		respondErr(c, 400, "ends_at is before starts_at")
+		return
+	}
+	req.StartsAt = formatDate(starts)
+	req.EndsAt = formatDate(ends)
 	if !allowedTemplates[req.Template] {
 		respondErr(c, http.StatusBadRequest, "unknown template")
 		return
@@ -121,10 +146,11 @@ func createEventTx(ctx context.Context, db database.Store, accountID int64, req 
 
 	var eventID int64
 	err = tx.QueryRow(ctx, `
-		INSERT INTO events (account_id, name, place, template)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO events (account_id, name, place, template, starts_at, ends_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id`,
 		accountID, req.Name, req.Place, req.Template,
+		nullableDate(req.StartsAt), nullableDate(req.EndsAt),
 	).Scan(&eventID)
 	if err != nil {
 		return createEventResponse{}, fmt.Errorf("insert event: %w", err)
@@ -159,6 +185,8 @@ func createEventTx(ctx context.Context, db database.Store, accountID int64, req 
 		Name:       req.Name,
 		Place:      req.Place,
 		Template:   req.Template,
+		StartsAt:   req.StartsAt,
+		EndsAt:     req.EndsAt,
 		InviteCode: code,
 	}, nil
 }

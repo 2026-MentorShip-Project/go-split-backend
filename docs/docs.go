@@ -186,6 +186,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/auth/login": {
+            "post": {
+                "description": "Verify email + password, then set a session cookie. Accounts\ncreated through Google have no password and are rejected.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Log in with a password",
+                "parameters": [
+                    {
+                        "description": "Account login",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.loginRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.accountResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/auth.errorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/auth.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/logout": {
             "post": {
                 "description": "Deletes the session row named by the cookie and clears the\ncookie. Safe to call without a cookie.",
@@ -248,6 +294,52 @@ const docTemplate = `{
                     },
                     "410": {
                         "description": "Gone",
+                        "schema": {
+                            "$ref": "#/definitions/auth.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/register": {
+            "post": {
+                "description": "Create an account with name, email, and password, then set a\nsession cookie. Intended for testing; the product uses /auth/google.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Register an account with a password",
+                "parameters": [
+                    {
+                        "description": "Account registration",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.registerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/auth.accountResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/auth.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/auth.errorResponse"
                         }
@@ -458,7 +550,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Name and place; omit template",
+                        "description": "Name, place and dates; omit template",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -2093,6 +2185,22 @@ const docTemplate = `{
                 }
             }
         },
+        "auth.loginRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "password"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string",
+                    "minLength": 1
+                }
+            }
+        },
         "auth.recoverRequest": {
             "type": "object",
             "required": [
@@ -2124,6 +2232,29 @@ const docTemplate = `{
                 },
                 "guest_id": {
                     "type": "integer"
+                }
+            }
+        },
+        "auth.registerRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "name",
+                "password"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "minLength": 1
+                },
+                "password": {
+                    "type": "string",
+                    "maxLength": 72,
+                    "minLength": 8
                 }
             }
         },
@@ -2191,6 +2322,10 @@ const docTemplate = `{
                 "template"
             ],
             "properties": {
+                "ends_at": {
+                    "type": "string",
+                    "example": "2026-09-28"
+                },
                 "name": {
                     "type": "string",
                     "maxLength": 120,
@@ -2200,6 +2335,10 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 200
                 },
+                "starts_at": {
+                    "type": "string",
+                    "example": "2026-09-27"
+                },
                 "template": {
                     "type": "string"
                 }
@@ -2208,6 +2347,9 @@ const docTemplate = `{
         "events.createEventResponse": {
             "type": "object",
             "properties": {
+                "ends_at": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "integer"
                 },
@@ -2218,6 +2360,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "place": {
+                    "type": "string"
+                },
+                "starts_at": {
                     "type": "string"
                 },
                 "template": {
@@ -2386,6 +2531,9 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
+                "ends_at": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "integer"
                 },
@@ -2416,6 +2564,9 @@ const docTemplate = `{
                 "settled": {
                     "type": "boolean"
                 },
+                "starts_at": {
+                    "type": "string"
+                },
                 "template": {
                     "type": "string"
                 },
@@ -2432,6 +2583,9 @@ const docTemplate = `{
             "properties": {
                 "archived": {
                     "type": "boolean"
+                },
+                "ends_at": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "integer"
@@ -2450,6 +2604,9 @@ const docTemplate = `{
                 },
                 "settled": {
                     "type": "boolean"
+                },
+                "starts_at": {
+                    "type": "string"
                 },
                 "template": {
                     "type": "string"
@@ -2626,6 +2783,10 @@ const docTemplate = `{
                 "name"
             ],
             "properties": {
+                "ends_at": {
+                    "type": "string",
+                    "example": "2026-09-28"
+                },
                 "name": {
                     "type": "string",
                     "maxLength": 120
@@ -2633,6 +2794,10 @@ const docTemplate = `{
                 "place": {
                     "type": "string",
                     "maxLength": 200
+                },
+                "starts_at": {
+                    "type": "string",
+                    "example": "2026-09-27"
                 },
                 "template": {
                     "type": "string"

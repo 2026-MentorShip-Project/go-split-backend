@@ -4,9 +4,9 @@ This guide covers the event follow-up changes. The frontend is maintained separa
 
 ## Event metadata
 
-Create with `POST /events` using `name`, optional `place`, and `template`. Update name/place with `PATCH /events/{id}`. Scheduling fields `starts_at` and `ends_at` have been removed from requests, responses, and the live schema. System audit fields such as `created_at` remain. Old immutable settlement JSON retains its original audit metadata.
+Create with `POST /events` using `name`, optional `place`, `template`, and optional `starts_at` / `ends_at`. Update name, place and dates with `PATCH /events/{id}`. Scheduling fields are calendar dates in `YYYY-MM-DD`, never timestamps. An omitted `starts_at` on create becomes today in UTC+8; an omitted `ends_at` stays null. On `PATCH`, an absent date keeps the stored one and an empty string clears it, so editing only the name cannot wipe a schedule. `ends_at` before `starts_at` is refused with 400. System audit fields such as `created_at` remain. Old immutable settlement JSON retains its original audit metadata.
 
-Migration 0010 drops the old scheduling columns. Deploy with the old application stopped, since the earlier server queries those columns. This migration does not reset accounts, memberships, expenses, or settlements.
+Migration 0010 dropped the original `TIMESTAMPTZ` scheduling columns; migration 0011 restores scheduling as nullable `DATE` columns. Deploy with the old application stopped, since the earlier server queries different columns. Neither migration resets accounts, memberships, expenses, or settlements, and events created while scheduling was absent keep null dates.
 
 ## 分帳產出
 

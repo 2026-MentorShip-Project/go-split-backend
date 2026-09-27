@@ -4,8 +4,8 @@ package events
 
 import (
 	"fmt"
-	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -41,8 +41,8 @@ func TestEventFollowupContracts(t *testing.T) {
 	a.call(t, host, "PATCH", base+"/settlement-note", gin.H{"note": ""}, 204)
 	a.call(t, host, "PATCH", base+"/settlement-note", gin.H{"note": "Please transfer to the host"}, 204)
 	event := a.call(t, host, "GET", base, nil, 200)
-	if strings.Contains(event.Body.String(), "starts_at") || strings.Contains(event.Body.String(), "ends_at") {
-		t.Fatal("scheduling exposed")
+	if got := decodePRD[eventDetailResponse](t, event).StartsAt; got != time.Now().In(taipei).Format(dateLayout) {
+		t.Fatalf("starts_at = %q, want today", got)
 	}
 	if decodePRD[eventDetailResponse](t, event).TransferNote != "Please transfer to the host" {
 		t.Fatal("note missing")

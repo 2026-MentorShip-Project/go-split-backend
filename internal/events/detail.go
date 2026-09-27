@@ -25,6 +25,8 @@ type eventDetailResponse struct {
 	Name         string      `json:"name"`
 	Place        string      `json:"place"`
 	Template     string      `json:"template"`
+	StartsAt     string      `json:"starts_at"`
+	EndsAt       string      `json:"ends_at"`
 	Settled      bool        `json:"settled"`
 	Archived     bool        `json:"archived"`
 	CreatedAt    time.Time   `json:"created_at"`
@@ -95,13 +97,18 @@ func (h *Handler) GetEvent(c *gin.Context) {
 }
 
 func loadEventBase(ctx context.Context, db database.Store, eventID int64) (eventDetailResponse, error) {
-	var out eventDetailResponse
+	var (
+		out              eventDetailResponse
+		startsAt, endsAt *time.Time
+	)
 	err := db.QueryRow(ctx, `
-		SELECT id, name, place, template, settled, archived, created_at, transfer_note
+		SELECT id, name, place, template, starts_at, ends_at, settled, archived, created_at, transfer_note
 		  FROM events
 		 WHERE id = $1`, eventID).
 		Scan(&out.ID, &out.Name, &out.Place,
-			&out.Template, &out.Settled, &out.Archived, &out.CreatedAt, &out.TransferNote)
+			&out.Template, &startsAt, &endsAt, &out.Settled, &out.Archived, &out.CreatedAt, &out.TransferNote)
+	out.StartsAt = formatDate(startsAt)
+	out.EndsAt = formatDate(endsAt)
 	return out, err
 }
 
