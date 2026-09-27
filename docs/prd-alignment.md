@@ -29,7 +29,7 @@ Accepted decisions: exactly one account-backed host per event; incoming minus ou
 | 19 | Password register/login remain | Google-only account authentication; retain existing identity records |
 | 20 | Join has optional name, no conditions/note and loose phone validation | Required name for new membership; catalog-only conditions and note |
 | 21 | Empty expense cards rejected; PATCH skips nested validation | Permit empty cards; validate every provided detail on both paths |
-| 22 | No activity metadata edit endpoint or explicit virtual flag | Host-only metadata edits; expose virtual member identity |
+| 22 | No activity metadata edit endpoint | Host-only metadata edits |
 | 23 | Placeholder templates reject creation | Allow listed placeholders with empty settings until content exists |
 | 24 | Google errors collapse unverified email and upstream timeout | Stable distinct error codes and retained logs |
 | 25 | Tests encode obsolete greedy/ID-order behavior | Replace with acceptance, invariant, authorization and lifecycle tests |
@@ -64,7 +64,7 @@ Active legacy splits are recalculated under engine 1.1.0. Review their results b
 
 ## Implementation status and API contract
 
-Subsequent product decisions removed event scheduling, then restored it as calendar dates, and added settlement notes and explicit member binding. See [the current frontend API guide](frontend-api-guide.md) for these overrides.
+Subsequent product decisions removed event scheduling, then restored it as calendar dates, added settlement notes, and removed member binding once participants joined for themselves. See [the current frontend API guide](frontend-api-guide.md) for these overrides.
 
 All 28 backend gaps above are implemented. Frontend-only work in the scope boundary remains outside this repository; the demo was reviewed as a reference, not modified or deployed.
 

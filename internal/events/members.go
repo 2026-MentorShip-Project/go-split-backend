@@ -20,7 +20,6 @@ func (h *Handler) registerMemberRoutes(g *gin.RouterGroup) {
 	g.GET("/:id/members", anyRole, h.GetMembers)
 	g.GET("/:id/members/:member_id/role", anyRole, h.GetMemberRole)
 	g.POST("/:id/members", hostOnly, h.PostMember)
-	g.POST("/:id/members/:member_id/bind", hostOnly, h.BindMember)
 	g.PATCH("/:id/members/:member_id", hostOnly, h.PatchMember)
 	g.DELETE("/:id/members/:member_id", hostOnly, h.DeleteMember)
 }
@@ -30,7 +29,6 @@ type memberDTO struct {
 	Display    string   `json:"display"`
 	Role       string   `json:"role"`
 	Tags       []string `json:"tags"`
-	Virtual    bool     `json:"virtual"`
 	Note       string   `json:"note"`
 	SplitOrder int64    `json:"split_order"`
 	Guest      bool     `json:"guest"`
@@ -76,7 +74,6 @@ type createMemberRequest struct {
 // PostMember godoc
 // @Summary     Add a placeholder member to an event
 // @Description Host-only. Creates a seat-holder row with no account or guest
-// @Description identity. Virtual members are independent seats, not invitations.
 // @Tags        members
 // @Accept      json
 // @Produce     json
@@ -117,9 +114,9 @@ func (h *Handler) PostMember(c *gin.Context) {
 	err = h.DB.QueryRow(c.Request.Context(), `
 		INSERT INTO event_members (event_id, display, role, tags)
 		VALUES ($1, $2, $3::event_role, $4)
-		RETURNING id, display, role::text, tags, virtual, note, split_order, (guest_id IS NOT NULL) AS guest`,
+		RETURNING id, display, role::text, tags, note, split_order, (guest_id IS NOT NULL) AS guest`,
 		eventID, req.Display, req.Role, tags,
-	).Scan(&m.ID, &m.Display, &m.Role, &m.Tags, &m.Virtual, &m.Note, &m.SplitOrder, &m.Guest)
+	).Scan(&m.ID, &m.Display, &m.Role, &m.Tags, &m.Note, &m.SplitOrder, &m.Guest)
 	if err != nil {
 		respondErr(c, http.StatusInternalServerError, "create member")
 		return
@@ -208,9 +205,9 @@ func (h *Handler) PatchMember(c *gin.Context) {
 		       role    = COALESCE($2::event_role, role),
 		       tags    = COALESCE($3, tags)
 		 WHERE id = $4 AND event_id = $5
-	 RETURNING id, display, role::text, tags, virtual, note, split_order, (guest_id IS NOT NULL) AS guest`,
+	 RETURNING id, display, role::text, tags, note, split_order, (guest_id IS NOT NULL) AS guest`,
 		displayArg, roleArg, tagsArg, memberID, eventID,
-	).Scan(&m.ID, &m.Display, &m.Role, &m.Tags, &m.Virtual, &m.Note, &m.SplitOrder, &m.Guest)
+	).Scan(&m.ID, &m.Display, &m.Role, &m.Tags, &m.Note, &m.SplitOrder, &m.Guest)
 	if errors.Is(err, pgx.ErrNoRows) {
 		respondErr(c, http.StatusNotFound, "member not found")
 		return
