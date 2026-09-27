@@ -64,7 +64,7 @@ Active legacy splits are recalculated under engine 1.1.0. Review their results b
 
 ## Implementation status and API contract
 
-Subsequent product decisions remove event scheduling and add settlement notes and explicit member binding. See [the current frontend API guide](frontend-api-guide.md) for these overrides.
+Subsequent product decisions removed event scheduling, then restored it as calendar dates, and added settlement notes and explicit member binding. See [the current frontend API guide](frontend-api-guide.md) for these overrides.
 
 All 28 backend gaps above are implemented. Frontend-only work in the scope boundary remains outside this repository; the demo was reviewed as a reference, not modified or deployed.
 
