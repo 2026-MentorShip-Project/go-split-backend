@@ -131,7 +131,7 @@ func loadMembers(ctx context.Context, db database.Store, eventID int64, sub auth
 	}
 
 	rows, err := db.Query(ctx, `
-		SELECT id, display, role::text, tags, virtual, note, split_order,
+		SELECT id, display, role::text, tags, note, split_order,
 		       (guest_id IS NOT NULL) AS guest,
 		       COALESCE(($1 <> 0 AND account_id = $1) OR ($2 <> 0 AND guest_id = $2), false) AS you
 		  FROM event_members
@@ -146,7 +146,7 @@ func loadMembers(ctx context.Context, db database.Store, eventID int64, sub auth
 	out := []memberDTO{}
 	for rows.Next() {
 		var m memberDTO
-		if err := rows.Scan(&m.ID, &m.Display, &m.Role, &m.Tags, &m.Virtual, &m.Note, &m.SplitOrder, &m.Guest, &m.You); err != nil {
+		if err := rows.Scan(&m.ID, &m.Display, &m.Role, &m.Tags, &m.Note, &m.SplitOrder, &m.Guest, &m.You); err != nil {
 			return nil, err
 		}
 		out = append(out, m)

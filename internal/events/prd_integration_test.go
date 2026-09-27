@@ -126,9 +126,6 @@ func TestPRDLifecycle(t *testing.T) {
 	a.call(t, host, "PATCH", fmt.Sprintf("%s/members/%d", base, hid), gin.H{"role": "member"}, 409)
 	a.call(t, host, "DELETE", fmt.Sprintf("%s/members/%d", base, hid), nil, 409)
 	co := decodePRD[memberDTO](t, a.call(t, host, "POST", base+"/members", gin.H{"display": "co", "role": "co"}, 201))
-	if !co.Virtual {
-		t.Fatal("virtual flag missing")
-	}
 	a.call(t, guest, "POST", base+"/items", gin.H{"payer_member_id": mid, "details": []any{}}, 403)
 	a.call(t, host, "POST", base+"/items", gin.H{"payer_member_id": hid, "details": []any{}}, 201)
 	a.call(t, host, "POST", base+"/apply-template", gin.H{"label": "烤肉/露營模板"}, 404)

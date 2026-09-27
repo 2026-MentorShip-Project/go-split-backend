@@ -958,7 +958,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Host-only. Creates a seat-holder row with no account or guest\nidentity. Virtual members are independent seats, not invitations.",
+                "description": "Host-only. Creates a seat-holder row with no account or guest",
                 "consumes": [
                     "application/json"
                 ],
@@ -1141,60 +1141,6 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/events.errorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/events/{id}/members/{member_id}/bind": {
-            "post": {
-                "description": "Host only, active events only. Keeps placeholder ID, display, role, tags, note and split order. Moves expense references and deletes the duplicate joined membership. Conflicting custom amounts return 409. Splits recalculate with one fewer member.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "members"
-                ],
-                "summary": "Bind an already-joined identity to a host-created placeholder",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "Event id",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Placeholder member id to keep",
-                        "name": "member_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Joined member to bind",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/events.bindMemberRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/events.memberDTO"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/events.errorResponse"
                         }
@@ -2271,17 +2217,6 @@ const docTemplate = `{
                 }
             }
         },
-        "events.bindMemberRequest": {
-            "type": "object",
-            "required": [
-                "joined_member_id"
-            ],
-            "properties": {
-                "joined_member_id": {
-                    "type": "integer"
-                }
-            }
-        },
         "events.createDetailRequest": {
             "type": "object",
             "properties": {
@@ -2740,9 +2675,6 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
-                },
-                "virtual": {
-                    "type": "boolean"
                 },
                 "you": {
                     "type": "boolean"
