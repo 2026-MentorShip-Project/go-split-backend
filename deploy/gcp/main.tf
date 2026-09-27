@@ -40,6 +40,11 @@ resource "google_project_service" "secretmanager_api" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "aiplatform_api" {
+  service            = "aiplatform.googleapis.com"
+  disable_on_destroy = false
+}
+
 # ------------------------------------------------------------------------------
 # Artifact Registry
 # ------------------------------------------------------------------------------
@@ -142,6 +147,12 @@ resource "google_secret_manager_secret_iam_member" "cloud_run_db_password_access
   member    = "serviceAccount:${google_service_account.go_backend_sa.email}"
 }
 
+resource "google_project_iam_member" "cloud_run_vertex_user" {
+  project = var.gcp_project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${google_service_account.go_backend_sa.email}"
+}
+
 resource "google_secret_manager_secret_iam_member" "cloud_run_google_client_id_accessor" {
   secret_id = google_secret_manager_secret.google_client_id.id
   role      = "roles/secretmanager.secretAccessor"
@@ -209,6 +220,21 @@ resource "google_cloud_run_v2_service" "go_backend" {
       }
 
       env {
+        name  = "VERTEX_PROJECT"
+        value = var.gcp_project_id
+      }
+
+      env {
+        name  = "VERTEX_LOCATION"
+        value = var.vertex_location
+      }
+
+      env {
+        name  = "VERTEX_MODEL"
+        value = var.vertex_model
+      }
+
+      env {
         name  = "DB_HOST"
         value = "/cloudsql/${google_sql_database_instance.postgres.connection_name}"
       }
@@ -257,7 +283,7 @@ resource "google_cloud_run_v2_service" "go_backend" {
     ]
   }
 
-  depends_on = [google_project_service.run_api, google_project_iam_member.cloud_run_sql_client, google_secret_manager_secret_iam_member.cloud_run_db_password_accessor, google_secret_manager_secret_iam_member.cloud_run_google_client_id_accessor]
+  depends_on = [google_project_service.run_api, google_project_service.aiplatform_api, google_project_iam_member.cloud_run_sql_client, google_project_iam_member.cloud_run_vertex_user, google_secret_manager_secret_iam_member.cloud_run_db_password_accessor, google_secret_manager_secret_iam_member.cloud_run_google_client_id_accessor]
 }
 
 # ------------------------------------------------------------------------------

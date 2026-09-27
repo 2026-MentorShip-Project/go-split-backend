@@ -42,3 +42,15 @@ variable "allowed_origins" {
   description = "Comma-separated browser origins allowed for credentialed CORS (scheme + host + port, no path)"
   default     = "https://go-split.vercel.app,http://localhost:3000"
 }
+
+variable "vertex_location" {
+  type        = string
+  description = "Vertex AI location for rule drafting, e.g. asia-east1; empty disables the feature"
+  default     = ""
+}
+
+variable "vertex_model" {
+  type        = string
+  description = "Vertex AI model id used to draft split rules; empty disables the feature"
+  default     = ""
+}
