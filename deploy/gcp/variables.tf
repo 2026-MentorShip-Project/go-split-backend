@@ -54,3 +54,39 @@ variable "vertex_model" {
   description = "Vertex AI model id used to draft split rules; empty disables the feature"
   default     = ""
 }
+
+variable "cloud_run_max_instances" {
+  type        = number
+  description = "Cloud Run instance cap. Each instance opens at least 4 database connections (pgx default), so instances x 4 must stay under the Cloud SQL limit (about 25 on db-f1-micro, a few reserved)."
+  default     = 5
+}
+
+variable "db_disk_autoresize_limit_gb" {
+  type        = number
+  description = "Largest size, in GB, that Cloud SQL autoresize may grow the disk to"
+  default     = 20
+}
+
+variable "gar_keep_images" {
+  type        = number
+  description = "Most recent backend images Artifact Registry keeps regardless of age"
+  default     = 10
+}
+
+variable "billing_account_id" {
+  type        = string
+  description = "Billing account ID (XXXXXX-XXXXXX-XXXXXX) for the budget alert; empty skips the budget"
+  default     = ""
+}
+
+variable "monthly_budget" {
+  type        = number
+  description = "Monthly budget, in whole units of the billing account's currency; alerts at 50%, 90% and 100%, plus a forecast"
+  default     = 20
+}
+
+variable "budget_alert_emails" {
+  type        = list(string)
+  description = "Extra addresses for budget alerts, beyond the billing account's admins and users"
+  default     = []
+}

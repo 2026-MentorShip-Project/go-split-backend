@@ -6,6 +6,9 @@ export PROJECT_ID="project-4ddffd8b-3b42-486b-b6a"
 export REGION="asia-east1"
 export GCS_BUCKET_NAME="${PROJECT_ID}-tfstate"
 export GITHUB_REPO="2026-MentorShip-Project/go-split-backend"
+# Billing account for the budget alert (gcloud billing accounts list). Leave
+# empty to skip; Terraform then skips the budget too.
+export BILLING_ACCOUNT_ID=""
 
 gcloud config set project "${PROJECT_ID}"
 
@@ -41,6 +44,16 @@ done
 gcloud storage buckets add-iam-policy-binding "gs://${GCS_BUCKET_NAME}" \
   --member="serviceAccount:github-cd-runner@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/storage.objectAdmin"
+
+# Let Terraform manage the budget (deploy/gcp/billing.tf). The role is granted on
+# the billing account, not the project, so whoever runs this needs Billing
+# Account Administrator. On an existing setup, run just this command, then set
+# the BILLING_ACCOUNT_ID variable in GitHub.
+if [ -n "${BILLING_ACCOUNT_ID}" ]; then
+  gcloud billing accounts add-iam-policy-binding "${BILLING_ACCOUNT_ID}" \
+    --member="serviceAccount:github-cd-runner@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role="roles/billing.costsManager"
+fi
 
 # 6. Create Workload Identity Pool
 gcloud iam workload-identity-pools create "github-pool" \

@@ -53,6 +53,25 @@ resource "google_artifact_registry_repository" "backend" {
   repository_id = var.gar_repository_id
   format        = "DOCKER"
 
+  # CD pushes one image per commit. Keep enough recent ones to roll back to and
+  # delete the rest after 30 days, which keeps storage near the free 0.5 GB.
+  cleanup_policy_dry_run = false
+  cleanup_policies {
+    id     = "keep-recent"
+    action = "KEEP"
+    most_recent_versions {
+      keep_count = var.gar_keep_images
+    }
+  }
+  cleanup_policies {
+    id     = "delete-old"
+    action = "DELETE"
+    condition {
+      tag_state  = "ANY"
+      older_than = "2592000s" # 30 days
+    }
+  }
+
   depends_on = [google_project_service.artifact_registry_api]
 }
 
@@ -71,6 +90,16 @@ resource "google_sql_database_instance" "postgres" {
     disk_type         = "PD_SSD"
     disk_size         = 10
     disk_autoresize   = true
+    # Autoresize only grows, and a disk can't shrink, so cap it (GB).
+    disk_autoresize_limit = var.db_disk_autoresize_limit_gb
+
+    # Google applies updates in this weekly hour instead of any time.
+    # Hour is UTC: Saturday 20:00 UTC is Sunday 04:00 in Taiwan.
+    maintenance_window {
+      day          = 6
+      hour         = 20
+      update_track = "stable"
+    }
 
     backup_configuration {
       enabled                        = true
@@ -272,7 +301,7 @@ resource "google_cloud_run_v2_service" "go_backend" {
 
     scaling {
       min_instance_count = 0 # Scales to zero to save costs when idle
-      max_instance_count = 10
+      max_instance_count = var.cloud_run_max_instances
     }
   }
 
