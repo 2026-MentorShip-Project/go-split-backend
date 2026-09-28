@@ -4,7 +4,122 @@ Go-Split splits group expenses for an event. A host creates the event, invites
 members by code, records expenses, and settles once. The browser previews each
 split while the host types; the server calculates the result that counts.
 
-## Diagram
+The document has two views: the **runtime view** shows one request travelling
+through the running system, and the **build and deploy view** shows where each
+piece comes from and how it gets to production.
+
+## Runtime view: one request, end to end
+
+```mermaid
+flowchart LR
+    B["Browser<br/>Next.js app"]
+    V["Vercel<br/>/api/* rewrite"]
+    G["Google Front End<br/>TLS, routing, autoscaling"]
+    Google["Google tokeninfo<br/>(sign-in only)"]
+
+    subgraph I["Cloud Run instance"]
+        direction TB
+        M1["Recovery + CORS"]
+        M2["RequireSession"]
+        M3["eventTransaction<br/>BEGIN + lock event row"]
+        M4["RequireEventRole"]
+        H["Handler"]
+        E["splitengine"]
+        P["pgxpool"]
+        M1 --> M2 --> M3 --> M4 --> H
+        H --> E
+    end
+
+    DB[("Cloud SQL<br/>PostgreSQL 15")]
+
+    B -- "1 HTTPS + session cookie" --> V
+    V -- "2 forwards to API_URL" --> G
+    G -- "3 picks or starts an instance" --> M1
+    M2 & M3 & M4 & H --> P
+    P -- "4 Unix socket /cloudsql" --> DB
+    H -. "POST /auth/google only" .-> Google
+    M3 -- "5 COMMIT, then response via Vercel" --> B
+```
+
+1. **Browser → Vercel.** The app calls `/api/...` on its own origin, with the
+   `session` cookie attached.
+2. **Vercel → Cloud Run.** The Next.js rewrite forwards the request to the
+   backend URL (`API_URL`).
+3. **Google Front End → instance.** Google terminates TLS and routes to a
+   running instance. If none is running (scaled to zero), it starts one first,
+   which is a cold start.
+4. **Instance → database.** Each layer that needs data borrows a connection
+   from the pgx pool and reaches Cloud SQL through the mounted Unix socket.
+   Only `POST /auth/google` also calls Google, to check the ID token.
+5. **Response.** For `/events/{id}/...` routes the handler's response is
+   buffered. It is sent only after the transaction commits, and if the handler
+   fails the transaction rolls back. So a client never sees a success for data
+   that was not saved.
+
+## Sequence: saving an expense (`POST /events/{id}/items`)
+
+Saving an expense passes through every layer: session, event lock, role
+check, validation with the split engine, and the database write.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Host (browser)
+    participant V as Vercel
+    participant R as Cloud Run: Gin middleware
+    participant H as PostItem handler
+    participant E as splitengine
+    participant D as PostgreSQL
+
+    Note over U: WASM engine previews the split as the host types.<br/>No request is sent until Save.
+    U->>V: POST /api/events/42/items (Cookie: session)
+    V->>R: POST /events/42/items
+
+    R->>D: RequireSession: SELECT sessions WHERE token, not expired
+    alt no or expired session
+        R-->>U: 401 not signed in
+    end
+
+    R->>D: eventTransaction: BEGIN
+    R->>D: SELECT settled, archived FROM events WHERE id = 42 FOR UPDATE
+    Note over R,D: Waits here if another write holds this event's lock.<br/>Reads use FOR SHARE and don't wait for each other.
+    alt event missing
+        R-->>U: 404 event not found
+    else settled or archived
+        R-->>U: 409 event is read-only
+    end
+
+    R->>D: RequireEventRole: SELECT role FROM event_members
+    alt not a member, or role not host / co-host
+        R-->>U: 403
+    end
+
+    R->>H: next()
+    H->>H: bind JSON (400 if malformed)
+    H->>D: check payer is a member of the event
+    H->>D: load members, rules, item tags
+    loop each detail line
+        H->>E: SplitDetail(amount, tag, participants, custom amounts)
+        E-->>H: shares + validity
+    end
+    alt any line invalid
+        H-->>R: 422 details: [{index, code}]
+        R->>D: ROLLBACK
+        R-->>U: 422 (the frontend marks the bad lines)
+    else all lines valid
+        H->>D: INSERT items, then its detail lines
+        H-->>R: 201 + item (buffered)
+        R->>D: COMMIT
+        R-->>V: 201 Created + item
+        V-->>U: 201 Created + item
+    end
+```
+
+The expensive part of the request is the database round trips (about 14 for a
+two-line card, one or more per line), not the calculation. That's why the load test's latency rises when
+requests queue for a pool connection or for the event's lock (see section 3).
+
+## Build and deploy view
 
 ```mermaid
 flowchart LR
