@@ -3,17 +3,24 @@ import { check, fail } from 'k6';
 import exec from 'k6/execution';
 import { Rate } from 'k6/metrics';
 
-// Capacity test against a local server. Fixtures come from TestCapacity; run it
-// with `make load-capacity`. See docs/report/03-scalability.md for the targets.
+// Capacity test. Locally, TestCapacity seeds the fixture (`make load-capacity`).
+// Against a deployed server (`make load-prod`), it reads one real event with one
+// real session and never writes: seeding needs database access, and settling
+// freezes an event for good. See docs/report/03-scalability.md for the targets.
 const base = __ENV.LOAD_BASE_URL;
-if (!base || !__ENV.LOAD_FIXTURE) fail('run through TestCapacity, which seeds LOAD_FIXTURE');
-const fixture = JSON.parse(open(__ENV.LOAD_FIXTURE));
+const remote = Boolean(__ENV.LOAD_SESSION);
+if (!base) fail('LOAD_BASE_URL is required');
+if (!remote && !__ENV.LOAD_FIXTURE) fail('run through TestCapacity, which seeds LOAD_FIXTURE');
+const fixture = remote
+  ? { events: [{ id: Number(__ENV.LOAD_EVENT_ID), host: __ENV.LOAD_SESSION, members: [__ENV.LOAD_SESSION] }] }
+  : JSON.parse(open(__ENV.LOAD_FIXTURE));
 
 const peak = Number(__ENV.CAPACITY_RPS || 300);
 const hold = Number(__ENV.CAPACITY_HOLD_SECONDS || 120);
-const hotRate = Number(__ENV.CAPACITY_HOT_RPS || 20);
+const hotRate = remote ? 0 : Number(__ENV.CAPACITY_HOT_RPS || 20);
+const writeShare = remote ? 0 : 0.15;
 const ramp = 60;
-// k6 shares the machine with the server, so allow a sliver of undelivered load.
+// Allow a sliver of undelivered load: locally k6 shares the machine with the server.
 const planned = peak * (ramp / 2 + hold + 7.5) + hotRate * hold;
 
 const serverErrors = new Rate('server_errors');
@@ -27,10 +34,28 @@ const reads = [
   { weight: 15, name: 'GET /events/{id}/me/details', path: (id) => `/events/${id}/me/details` },
 ];
 const readTotal = reads.reduce((sum, r) => sum + r.weight, 0);
-const writes = ['POST /events/{id}/items', 'PATCH /events/{id}/items/{item_id}'];
+const writes = remote ? [] : ['POST /events/{id}/items', 'PATCH /events/{id}/items/{item_id}'];
 const perEndpoint = Object.fromEntries(
   [...reads.map((r) => r.name), ...writes].map((name) => [`http_req_duration{scenario:mixed,name:${name}}`, ['p(95)<500']]),
 );
+
+const localScenarios = remote ? {} : {
+  // Writes to one event are serialized, so one busy event queues on itself.
+  hot_event: {
+    executor: 'constant-arrival-rate', exec: 'hotEvent', rate: hotRate, timeUnit: '1s',
+    startTime: `${ramp}s`, duration: `${hold}s`, preAllocatedVUs: 30, maxVUs: 60,
+  },
+  // Settle while saves race it on the same event, during peak load.
+  settle: {
+    executor: 'shared-iterations', exec: 'settle', iterations: fixture.settle.length, vus: 10,
+    startTime: `${ramp + Math.floor(hold / 2)}s`, maxDuration: `${Math.floor(hold / 2)}s`,
+  },
+};
+
+const localThresholds = remote ? {} : {
+  'http_req_duration{scenario:hot_event}': ['p(95)<500'],
+  'http_req_duration{scenario:settle}': ['p(95)<1000'],
+};
 
 export const options = {
   scenarios: {
@@ -44,26 +69,16 @@ export const options = {
         { target: 0, duration: '15s' },
       ],
     },
-    // Writes to one event are serialized, so one busy event queues on itself.
-    hot_event: {
-      executor: 'constant-arrival-rate', exec: 'hotEvent', rate: hotRate, timeUnit: '1s',
-      startTime: `${ramp}s`, duration: `${hold}s`, preAllocatedVUs: 30, maxVUs: 60,
-    },
-    // Settle while saves race it on the same event, during peak load.
-    settle: {
-      executor: 'shared-iterations', exec: 'settle', iterations: fixture.settle.length, vus: 10,
-      startTime: `${ramp + Math.floor(hold / 2)}s`, maxDuration: `${Math.floor(hold / 2)}s`,
-    },
+    ...localScenarios,
   },
   thresholds: {
     'http_req_duration{scenario:mixed}': ['p(95)<500'],
-    'http_req_duration{scenario:hot_event}': ['p(95)<500'],
-    'http_req_duration{scenario:settle}': ['p(95)<1000'],
     http_req_failed: ['rate<0.01'],
     server_errors: ['rate<0.01'],
     checks: ['rate>0.99'],
     dropped_iterations: [`count<${Math.ceil(planned * 0.005)}`],
     ...perEndpoint,
+    ...localThresholds,
   },
 };
 
@@ -116,7 +131,7 @@ function save(event) {
 
 export function mixed() {
   const event = pick(fixture.events);
-  if (Math.random() < 0.15) save(event);
+  if (Math.random() < writeShare) save(event);
   else read(event);
 }
 

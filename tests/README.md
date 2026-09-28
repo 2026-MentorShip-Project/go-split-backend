@@ -44,8 +44,21 @@ make load-capacity CAPACITY_RPS=150 CAPACITY_HOLD_SECONDS=60
 
 The capacity test (`load/capacity.js`, seeded by `TestCapacity`) mixes reads and
 saves, adds a busy event and settlements racing saves, and checks p95 per
-endpoint. It is local only. Targets and results are in
-`docs/report/03-scalability.md`.
+endpoint. Targets and results are in `docs/report/03-scalability.md`.
+
+To run it against a deployed server such as production:
+
+```sh
+make load-prod LOAD_BASE_URL=https://<cloud-run-url> LOAD_SESSION=<cookie> LOAD_EVENT_ID=<id>
+```
+
+This mode only reads, because seeding needs database access and settling
+freezes an event for good. It runs the everyday-traffic scenario against one
+event you belong to, using your own session. Take the `session` cookie from
+your browser's developer tools after signing in; the event ID is in the app's
+URL. It checks the session and event first, then asks for confirmation
+(skip with `CONFIRM=yes`). Real users of that server share the load, and at 300
+RPS the database connection limit in the scalability doc applies.
 
 Template transaction and database uniqueness checks require a disposable database:
 

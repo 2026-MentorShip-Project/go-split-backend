@@ -36,6 +36,11 @@ Two k6 tests, both run against a local server on a throwaway database
 | Extra scenarios | none | 20 saves/s on one busy event; 40 settlements, each racing three saves |
 | Runs in CI | Yes | No, because shared runners give noisy timings |
 
+`make load-prod` runs the capacity test's everyday-traffic scenario, reads
+only, against a deployed server such as production, using a real session and
+event (see `tests/README.md`). It skips saves, the busy event and settlement:
+seeding them needs direct database access, and settling freezes events for good.
+
 Targets, from the report spec's reference numbers:
 
 | Metric | Target |

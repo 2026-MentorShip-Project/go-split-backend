@@ -96,3 +96,9 @@ load-smoke:
 .PHONY: load-capacity
 load-capacity:
 	@./tests/load/run-local.sh capacity
+
+# Reads only, against a deployed server. Needs LOAD_BASE_URL, LOAD_SESSION and
+# LOAD_EVENT_ID; asks for confirmation unless CONFIRM=yes. Same CAPACITY_* knobs.
+.PHONY: load-prod
+load-prod:
+	@./tests/load/run-remote.sh
