@@ -85,3 +85,14 @@ run-local:
 	DB_HOST=127.0.0.1 DB_PORT=5432 DB_USER=go_split DB_PASSWORD=go_split \
 	GOOGLE_CLIENT_ID=$(GOOGLE_CLIENT_ID) \
 	DB_NAME=go_split go run ./cmd/go-split-backend/server.go
+
+####################### Load ##################
+# Both start a local server on a throwaway database (go_split_load) and need k6.
+# Capacity knobs: CAPACITY_RPS (300), CAPACITY_HOLD_SECONDS (120), CAPACITY_HOT_RPS (20).
+.PHONY: load-smoke
+load-smoke:
+	@./tests/load/run-local.sh smoke
+
+.PHONY: load-capacity
+load-capacity:
+	@./tests/load/run-local.sh capacity

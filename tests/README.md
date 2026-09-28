@@ -31,6 +31,22 @@ traffic. These are initial CI regression limits, not production capacity claims.
 Results and server logs are retained for seven days, including on failure.
 Tests create unique accounts/events; discard the test database after use.
 
+## Local load tests
+
+Both targets recreate a `go_split_load` database in the compose Postgres, start
+the server on `:8080`, run the test, and stop the server. They need Docker and k6.
+
+```sh
+make load-smoke     # the CI load test above
+make load-capacity  # ramps to 300 RPS; about 4 minutes
+make load-capacity CAPACITY_RPS=150 CAPACITY_HOLD_SECONDS=60
+```
+
+The capacity test (`load/capacity.js`, seeded by `TestCapacity`) mixes reads and
+saves, adds a busy event and settlements racing saves, and checks p95 per
+endpoint. It is local only. Targets and results are in
+`docs/report/03-scalability.md`.
+
 Template transaction and database uniqueness checks require a disposable database:
 
 ```sh
