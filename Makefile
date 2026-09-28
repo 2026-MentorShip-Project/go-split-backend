@@ -102,3 +102,10 @@ load-capacity:
 .PHONY: load-prod
 load-prod:
 	@./tests/load/run-remote.sh
+
+# Latency the frontend's /api proxy adds: the same reads, direct and proxied, at
+# HOP_RPS (5) for HOP_SECONDS (60). Needs LOAD_BACKEND_URL, LOAD_FRONTEND_URL,
+# LOAD_SESSION and LOAD_EVENT_ID.
+.PHONY: load-hop
+load-hop:
+	@./tests/load/run-hop.sh

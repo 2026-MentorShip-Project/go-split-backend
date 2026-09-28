@@ -60,6 +60,15 @@ URL. It checks the session and event first, then asks for confirmation
 (skip with `CONFIRM=yes`). Real users of that server share the load, and at 300
 RPS the database connection limit in the scalability doc applies.
 
+To measure what the frontend's `/api` proxy adds, send the same reads straight to
+the backend and through the proxy at a low rate (`HOP_RPS`, default 5, for
+`HOP_SECONDS`, default 60), and compare:
+
+```sh
+make load-hop LOAD_BACKEND_URL=https://<cloud-run-url> LOAD_FRONTEND_URL=https://go-split.vercel.app/api \
+  LOAD_SESSION=<cookie> LOAD_EVENT_ID=<id>
+```
+
 Template transaction and database uniqueness checks require a disposable database:
 
 ```sh
