@@ -31,6 +31,44 @@ traffic. These are initial CI regression limits, not production capacity claims.
 Results and server logs are retained for seven days, including on failure.
 Tests create unique accounts/events; discard the test database after use.
 
+## Local load tests
+
+Both targets recreate a `go_split_load` database in the compose Postgres, start
+the server on `:8080`, run the test, and stop the server. They need Docker and k6.
+
+```sh
+make load-smoke     # the CI load test above
+make load-capacity  # ramps to 300 RPS; about 4 minutes
+make load-capacity CAPACITY_RPS=150 CAPACITY_HOLD_SECONDS=60
+```
+
+The capacity test (`load/capacity.js`, seeded by `TestCapacity`) mixes reads and
+saves, adds a busy event and settlements racing saves, and checks p95 per
+endpoint. Targets and results are in `docs/report/03-scalability.md`.
+
+To run it against a deployed server such as production:
+
+```sh
+make load-prod LOAD_BASE_URL=https://<cloud-run-url> LOAD_SESSION=<cookie> LOAD_EVENT_ID=<id>
+```
+
+This mode only reads, because seeding needs database access and settling
+freezes an event for good. It runs the everyday-traffic scenario against one
+event you belong to, using your own session. Take the `session` cookie from
+your browser's developer tools after signing in; the event ID is in the app's
+URL. It checks the session and event first, then asks for confirmation
+(skip with `CONFIRM=yes`). Real users of that server share the load, and at 300
+RPS the database connection limit in the scalability doc applies.
+
+To measure what the frontend's `/api` proxy adds, send the same reads straight to
+the backend and through the proxy at a low rate (`HOP_RPS`, default 5, for
+`HOP_SECONDS`, default 60), and compare:
+
+```sh
+make load-hop LOAD_BACKEND_URL=https://<cloud-run-url> LOAD_FRONTEND_URL=https://go-split.vercel.app/api \
+  LOAD_SESSION=<cookie> LOAD_EVENT_ID=<id>
+```
+
 Template transaction and database uniqueness checks require a disposable database:
 
 ```sh

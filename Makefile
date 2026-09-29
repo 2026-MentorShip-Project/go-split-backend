@@ -85,3 +85,27 @@ run-local:
 	DB_HOST=127.0.0.1 DB_PORT=5432 DB_USER=go_split DB_PASSWORD=go_split \
 	GOOGLE_CLIENT_ID=$(GOOGLE_CLIENT_ID) \
 	DB_NAME=go_split go run ./cmd/go-split-backend/server.go
+
+####################### Load ##################
+# Both start a local server on a throwaway database (go_split_load) and need k6.
+# Capacity knobs: CAPACITY_RPS (300), CAPACITY_HOLD_SECONDS (120), CAPACITY_HOT_RPS (20).
+.PHONY: load-smoke
+load-smoke:
+	@./tests/load/run-local.sh smoke
+
+.PHONY: load-capacity
+load-capacity:
+	@./tests/load/run-local.sh capacity
+
+# Reads only, against a deployed server. Needs LOAD_BASE_URL, LOAD_SESSION and
+# LOAD_EVENT_ID; asks for confirmation unless CONFIRM=yes. Same CAPACITY_* knobs.
+.PHONY: load-prod
+load-prod:
+	@./tests/load/run-remote.sh
+
+# Latency the frontend's /api proxy adds: the same reads, direct and proxied, at
+# HOP_RPS (5) for HOP_SECONDS (60). Needs LOAD_BACKEND_URL, LOAD_FRONTEND_URL,
+# LOAD_SESSION and LOAD_EVENT_ID.
+.PHONY: load-hop
+load-hop:
+	@./tests/load/run-hop.sh
