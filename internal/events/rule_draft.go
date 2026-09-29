@@ -4,7 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
+	"strconv"
+	"sync"
+	"time"
 
 	"go-split-backend/internal/auth"
 	"go-split-backend/internal/database"
@@ -13,7 +17,42 @@ import (
 
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/time/rate"
 )
+
+// Each draft is a paid model call. A host gets draftBurst at once, then one
+// every draftEvery; the limit is per instance, so it bounds cost, not fairness.
+const (
+	draftBurst   = 5
+	draftEvery   = 12 * time.Second
+	draftTimeout = 30 * time.Second
+)
+
+type draftLimiter struct {
+	mu    sync.Mutex
+	hosts map[int64]*rate.Limiter
+}
+
+func newDraftLimiter() *draftLimiter {
+	return &draftLimiter{hosts: map[int64]*rate.Limiter{}}
+}
+
+// reserve reports how long the host must wait, or zero when the draft may run.
+func (l *draftLimiter) reserve(accountID int64) time.Duration {
+	l.mu.Lock()
+	lim, ok := l.hosts[accountID]
+	if !ok {
+		lim = rate.NewLimiter(rate.Every(draftEvery), draftBurst)
+		l.hosts[accountID] = lim
+	}
+	l.mu.Unlock()
+	r := lim.Reserve()
+	if wait := r.Delay(); wait > 0 {
+		r.Cancel()
+		return wait
+	}
+	return 0
+}
 
 // ruleLock marks a planned rule for an item tag that expenses already use;
 // POST /rules refuses those, so the draft reports it instead of promising it.
@@ -51,8 +90,10 @@ type ruleDraftResponse struct {
 // @Failure     401  {object} errorResponse
 // @Failure     403  {object} errorResponse
 // @Failure     409  {object} errorResponse
+// @Failure     429  {object} errorResponse
 // @Failure     502  {object} errorResponse
 // @Failure     503  {object} errorResponse
+// @Failure     504  {object} errorResponse
 // @Router      /events/{id}/rules/draft [post]
 func (h *Handler) PostRuleDraft(c *gin.Context) {
 	if h.Drafter == nil {
@@ -62,6 +103,11 @@ func (h *Handler) PostRuleDraft(c *gin.Context) {
 	var req ruleDraftRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respondErr(c, http.StatusBadRequest, "invalid request: "+err.Error())
+		return
+	}
+	if wait := h.drafts.reserve(auth.CurrentSubject(c).AccountID); wait > 0 {
+		c.Header("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
+		respondErr(c, http.StatusTooManyRequests, "too many drafts; try again shortly")
 		return
 	}
 	ctx := c.Request.Context()
@@ -84,10 +130,16 @@ func (h *Handler) PostRuleDraft(c *gin.Context) {
 	}
 	in.Text = req.Text
 
-	plan, err := h.Drafter.Draft(ctx, in)
+	draftCtx, cancel := context.WithTimeout(ctx, draftTimeout)
+	defer cancel()
+	plan, err := h.Drafter.Draft(draftCtx, in)
 	switch {
 	case errors.Is(err, ruleassist.ErrNotConfigured):
 		respondErr(c, http.StatusServiceUnavailable, "rule drafting is not configured")
+		return
+	case errors.Is(err, context.DeadlineExceeded):
+		log.WithContext(ctx).WithError(err).WithField("event_id", eventID).Warn("rule draft timed out")
+		respondErr(c, http.StatusGatewayTimeout, "rule drafting timed out")
 		return
 	case err != nil:
 		log.WithContext(ctx).WithError(err).WithField("event_id", eventID).Error("rule draft failed")
