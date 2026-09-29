@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -107,6 +108,19 @@ func TestCheckKeepsGoodRulesWhenOneIsBad(t *testing.T) {
 	}
 	if len(out.Rules) != 1 || out.Rules[0].ItemTag != "肉品" {
 		t.Fatalf("good rule not kept: %+v", out.Rules)
+	}
+}
+
+func TestCheckDropsLabelsTheEventAlreadyHas(t *testing.T) {
+	plan := Plan{NewItemTags: []string{"肉品", "飲料", "飲料"}, NewCondTags: []string{"小孩", "吃素"}}
+
+	out, issues := Check(plan, event())
+
+	if len(issues) != 0 {
+		t.Fatalf("issues = %+v", issues)
+	}
+	if !slices.Equal(out.NewItemTags, []string{"飲料"}) || len(out.NewCondTags) != 0 {
+		t.Fatalf("new item tags = %v, new cond tags = %v", out.NewItemTags, out.NewCondTags)
 	}
 }
 

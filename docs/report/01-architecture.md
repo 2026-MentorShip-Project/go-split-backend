@@ -149,7 +149,7 @@ flowchart LR
         SQL[("Cloud SQL<br/>PostgreSQL 15")]
         SM["Secret Manager"]
         GCS[("GCS bucket<br/>PGO profiles")]
-        VTX["Vertex AI<br/>(rule assist, not yet routed)"]
+        VTX["Vertex AI<br/>(rule assist, not yet called)"]
         GAR["Artifact Registry"]
     end
 
@@ -185,7 +185,7 @@ flowchart LR
 | `internal/events` | Go API | Events, members, expense items, rules, tags, settlement, archive, and the shares/transfers reads. |
 | `internal/splitengine`, `internal/rulespec` | Go API and WASM | Pure calculation: split one amount across members by rules, weights and fixed amounts, then work out who pays the host. No I/O. |
 | `internal/profiling` | Go API | Collects CPU profiles in production and uploads them to GCS, used to build Go profile-guided optimization (PGO) (see `docs/pgo.md`). |
-| `internal/ruleassist` | Go package only | Drafts split rules from a plain-language description through Vertex AI. Not connected to a route yet. |
+| `internal/ruleassist` | Go API | Drafts split rules from a plain-language description for `POST /events/{id}/rules/draft`. The Vertex request is not written yet, so the route answers 503 unless `RULE_DRAFT_FIXTURE=true` serves canned plans. |
 | Cloud SQL | GCP | PostgreSQL 15 (`db-f1-micro`, one zone). Backups and point-in-time recovery on. Encrypted connections only; Cloud Run reaches it through the Cloud SQL Unix socket. |
 | Secret Manager | GCP | Database password and Google client ID, read by the Cloud Run service account. |
 
