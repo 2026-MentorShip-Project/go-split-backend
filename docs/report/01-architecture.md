@@ -185,7 +185,7 @@ flowchart LR
 | `internal/events` | Go API | Events, members, expense items, rules, tags, settlement, archive, and the shares/transfers reads. |
 | `internal/splitengine`, `internal/rulespec` | Go API and WASM | Pure calculation: split one amount across members by rules, weights and fixed amounts, then work out who pays the host. No I/O. |
 | `internal/profiling` | Go API | Collects CPU profiles in production and uploads them to GCS, used to build Go profile-guided optimization (PGO) (see `docs/pgo.md`). |
-| `internal/ruleassist` | Go API | Drafts split rules from a plain-language description for `POST /events/{id}/rules/draft` through Vertex AI (Gemini, `global` endpoint, JSON constrained by a schema). Off until `vertex_location` and `vertex_model` are set; `RULE_DRAFT_FIXTURE=true` serves canned plans locally. |
+| `internal/ruleassist` | Go API | Drafts split rules from a plain-language description for `POST /events/{id}/rules/draft` through Vertex AI (Gemini, `global` endpoint, JSON constrained by a schema). Off until `vertex_location` and `vertex_model` are set; `RULE_DRAFT_FIXTURE=true` serves canned plans locally. See `docs/rule-drafting.md`. |
 | Cloud SQL | GCP | PostgreSQL 15 (`db-f1-micro`, one zone). Backups and point-in-time recovery on. Encrypted connections only; Cloud Run reaches it through the Cloud SQL Unix socket. |
 | Secret Manager | GCP | Database password and Google client ID, read by the Cloud Run service account. |
 
