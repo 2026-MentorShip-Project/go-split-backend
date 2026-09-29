@@ -59,6 +59,9 @@ func main() {
 		log.Fatalf("Failed to seed templates: %v", err)
 	}
 	r := gin.New()
+	// Tag labels travel as path segments and may contain "/" (不喝酒/開車);
+	// route on the escaped path so %2F stays inside the label.
+	r.UseRawPath = true
 
 	r.Use(httpx.CORS())
 	r.Use(gin.RecoveryWithWriter(io.Discard, jsonRecoveryHandler))

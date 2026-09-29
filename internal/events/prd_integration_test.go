@@ -74,6 +74,7 @@ func newPRDAPIWithDrafter(t *testing.T, drafter ruleassist.Generator) *prdAPI {
 	}
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
+	r.UseRawPath = true
 	auth.New(db, testIdentity{}).Register(r)
 	h := New(db)
 	h.Drafter = drafter
