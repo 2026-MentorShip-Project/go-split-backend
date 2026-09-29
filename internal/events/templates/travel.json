@@ -1,0 +1,19 @@
+{
+  "label": "國內旅遊模板",
+  "description": "住宿均分、浮潛／手作只算參加者",
+  "item_tags": ["船票/車票", "交通費", "機車", "住宿", "門票", "水上活動", "手作課程", "餐飲", "海鮮", "酒精飲品", "無酒精飲品", "共同採買", "個人代購"],
+  "cond_tags": ["大人", "小孩", "幼兒", "長者", "晚到", "未成行", "下水", "上課", "自行前往", "需搭主辦的車", "騎機車", "吃素", "海鮮過敏", "不喝酒/開車"],
+  "rules": [
+    {"tag": "船票/車票", "groups": [{"conds": ["未成行"], "mode": "exclude"}, {"conds": ["幼兒"], "mode": "exclude"}, {"conds": ["小孩"], "mode": "weight", "weight": 0.5}, {"conds": ["長者"], "mode": "weight", "weight": 0.5}]},
+    {"tag": "交通費", "groups": [{"conds": ["自行前往"], "mode": "exclude"}, {"conds": ["需搭主辦的車"], "mode": "weight", "weight": 1}], "rest": {"mode": "exclude"}},
+    {"tag": "機車", "groups": [{"conds": ["騎機車"], "mode": "weight", "weight": 1}], "rest": {"mode": "exclude"}},
+    {"tag": "住宿", "groups": [{"conds": ["幼兒"], "mode": "exclude"}, {"conds": ["晚到"], "mode": "weight", "weight": 0.5}]},
+    {"tag": "門票", "groups": [{"conds": ["未成行"], "mode": "exclude"}, {"conds": ["幼兒"], "mode": "exclude"}, {"conds": ["小孩"], "mode": "weight", "weight": 0.5}, {"conds": ["長者"], "mode": "weight", "weight": 0.5}]},
+    {"tag": "水上活動", "groups": [{"conds": ["下水"], "mode": "weight", "weight": 1}], "rest": {"mode": "exclude"}},
+    {"tag": "手作課程", "groups": [{"conds": ["上課"], "mode": "weight", "weight": 1}], "rest": {"mode": "exclude"}},
+    {"tag": "餐飲", "groups": [{"conds": ["未成行"], "mode": "exclude"}, {"conds": ["幼兒"], "mode": "exclude"}, {"conds": ["小孩"], "mode": "weight", "weight": 0.5}, {"conds": ["晚到"], "mode": "weight", "weight": 0.5}]},
+    {"tag": "海鮮", "groups": [{"conds": ["未成行"], "mode": "exclude"}, {"conds": ["海鮮過敏"], "mode": "exclude"}, {"conds": ["小孩"], "mode": "weight", "weight": 0.5}]},
+    {"tag": "酒精飲品", "groups": [{"conds": ["未成行"], "mode": "exclude"}, {"conds": ["不喝酒/開車"], "mode": "exclude"}, {"conds": ["小孩"], "mode": "exclude"}, {"conds": ["幼兒"], "mode": "exclude"}]},
+    {"tag": "共同採買", "groups": [{"conds": ["未成行"], "mode": "exclude"}]}
+  ]
+}

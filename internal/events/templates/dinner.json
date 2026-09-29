@@ -1,0 +1,18 @@
+{
+  "label": "聚餐模板",
+  "description": "壽星免付、不喝酒不分酒錢",
+  "item_tags": ["套餐/桌菜", "肉品", "蔬菜", "海鮮", "主食", "甜點", "酒精飲品", "無酒精飲品", "服務費", "場地費", "慶生", "招待", "個人加點"],
+  "cond_tags": ["大人", "小孩", "幼兒", "晚到", "缺席", "壽星", "請客", "吃素", "海鮮過敏", "不喝酒/開車"],
+  "rules": [
+    {"tag": "套餐/桌菜", "groups": [{"conds": ["壽星"], "mode": "exclude"}, {"conds": ["幼兒"], "mode": "exclude"}, {"conds": ["小孩"], "mode": "weight", "weight": 0.5}]},
+    {"tag": "肉品", "groups": [{"conds": ["缺席"], "mode": "exclude"}, {"conds": ["壽星"], "mode": "exclude"}, {"conds": ["吃素"], "mode": "exclude"}, {"conds": ["小孩"], "mode": "weight", "weight": 0.5}, {"conds": ["晚到"], "mode": "weight", "weight": 0.5}]},
+    {"tag": "蔬菜", "groups": [{"conds": ["缺席"], "mode": "exclude"}, {"conds": ["壽星"], "mode": "exclude"}, {"conds": ["吃素"], "mode": "weight", "weight": 1.5}, {"conds": ["小孩"], "mode": "weight", "weight": 0.5}]},
+    {"tag": "海鮮", "groups": [{"conds": ["缺席"], "mode": "exclude"}, {"conds": ["壽星"], "mode": "exclude"}, {"conds": ["海鮮過敏"], "mode": "exclude"}, {"conds": ["小孩"], "mode": "weight", "weight": 0.5}]},
+    {"tag": "主食", "groups": [{"conds": ["缺席"], "mode": "exclude"}, {"conds": ["壽星"], "mode": "exclude"}, {"conds": ["小孩"], "mode": "weight", "weight": 0.5}]},
+    {"tag": "酒精飲品", "groups": [{"conds": ["缺席"], "mode": "exclude"}, {"conds": ["壽星"], "mode": "exclude"}, {"conds": ["不喝酒/開車"], "mode": "exclude"}, {"conds": ["小孩"], "mode": "exclude"}, {"conds": ["幼兒"], "mode": "exclude"}]},
+    {"tag": "服務費", "groups": [{"conds": ["缺席"], "mode": "exclude"}, {"conds": ["壽星"], "mode": "exclude"}]},
+    {"tag": "場地費", "groups": [{"conds": ["壽星"], "mode": "exclude"}]},
+    {"tag": "慶生", "groups": [{"conds": ["壽星"], "mode": "exclude"}]},
+    {"tag": "招待", "groups": [{"conds": ["請客"], "mode": "weight", "weight": 1}], "rest": {"mode": "exclude"}}
+  ]
+}

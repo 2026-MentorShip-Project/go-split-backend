@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"sort"
 
 	"go-split-backend/internal/database"
 
@@ -77,17 +76,5 @@ func loadAllTemplates(ctx context.Context, db database.Store) ([]templateItem, e
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	for label := range allowedTemplates {
-		found := false
-		for _, it := range out {
-			if it.Label == label {
-				found = true
-			}
-		}
-		if !found {
-			out = append(out, templateItem{Label: label, Soon: label != "自訂", Content: json.RawMessage(`{"item_tags":[],"cond_tags":[],"rules":[]}`)})
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
 	return out, nil
 }

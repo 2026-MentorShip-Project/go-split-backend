@@ -21,6 +21,7 @@ var allowedTemplates = map[string]bool{
 	"烤肉/露營模板": true,
 	"聚餐模板":    true,
 	"唱歌模板":    true,
+	"國內旅遊模板": true,
 	"出國旅遊模板":  true,
 	"社團活動模板":  true,
 }
