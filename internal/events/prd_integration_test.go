@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"go-split-backend/internal/auth"
 	"go-split-backend/internal/database"
+	"go-split-backend/internal/ruleassist"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -33,6 +34,11 @@ type prdAPI struct {
 }
 
 func newPRDAPI(t *testing.T) *prdAPI {
+	t.Helper()
+	return newPRDAPIWithDrafter(t, nil)
+}
+
+func newPRDAPIWithDrafter(t *testing.T, drafter ruleassist.Generator) *prdAPI {
 	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
@@ -69,7 +75,9 @@ func newPRDAPI(t *testing.T) *prdAPI {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	auth.New(db, testIdentity{}).Register(r)
-	New(db).Register(r)
+	h := New(db)
+	h.Drafter = drafter
+	h.Register(r)
 	return &prdAPI{r, db}
 }
 func (a *prdAPI) call(t *testing.T, cookie, method, path string, body any, status int) *httptest.ResponseRecorder {

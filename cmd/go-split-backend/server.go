@@ -18,6 +18,7 @@ import (
 	"go-split-backend/internal/events"
 	"go-split-backend/internal/httpx"
 	"go-split-backend/internal/profiling"
+	"go-split-backend/internal/ruleassist"
 
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
@@ -66,7 +67,9 @@ func main() {
 	r.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
 
 	auth.New(db, auth.NewGoogleVerifier(os.Getenv("GOOGLE_CLIENT_ID"))).Register(r)
-	events.New(db).Register(r)
+	eventsHandler := events.New(db)
+	eventsHandler.Drafter = ruleDrafter()
+	eventsHandler.Register(r)
 	s := &http.Server{
 		Addr:    ":8080",
 		Handler: r,
@@ -92,6 +95,20 @@ func main() {
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit
 	log.Info("Shutting down server ...")
+}
+
+// ruleDrafter picks the rule-drafting backend. RULE_DRAFT_FIXTURE=true serves
+// canned plans for local development; otherwise Vertex, when configured.
+func ruleDrafter() ruleassist.Generator {
+	if os.Getenv("RULE_DRAFT_FIXTURE") == "true" {
+		log.Warn("rule drafting answers from fixtures")
+		return ruleassist.SampleFixture()
+	}
+	g, err := ruleassist.NewVertexGenerator(ruleassist.ConfigFromEnv())
+	if err != nil {
+		return nil
+	}
+	return g
 }
 
 func jsonRecoveryHandler(ctx *gin.Context, recovered any) {

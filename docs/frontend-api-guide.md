@@ -109,3 +109,23 @@ The frontend `/join` route owns the UI and API selection:
 5. For an already authenticated account or guest session, submit to `POST /events/join` with `code`, plus any name, conditions, and note fields that apply.
 
 The QR payload is only another representation of the invite code; it does not create a second invitation or bypass the existing expiration and settlement checks. Use the frontend's QR component/library to render the URL as SVG or canvas.
+
+## Rule drafting
+
+`POST /events/{id}/rules/draft` turns a host's sentence into proposed tags, rules and member conditions. It is host-only and saves nothing.
+
+```json
+{ "text": "吃素的不用分肉錢，小孩算半份" }
+```
+
+`text` is 1–500 characters. The response is `{ "plan": {...}, "issues": [...] }`:
+
+- `plan.new_item_tags` / `plan.new_cond_tags`: labels the event lacks, to add before the rules.
+- `plan.rules`: each has `op` (`create` or `replace`), `item_tag`, `groups`, optional `rest` and `note`. The server sets `op` from the event, and normalizes `groups`/`rest` exactly as a save would store them.
+- `plan.member_conds`: `{ member_id, add }` for members the host named.
+- `plan.note`: a sentence to show the host.
+- `issues`: anything dropped from the plan, as `{ item_tag?, member_id?, code, detail }`. Codes include `unknown-item-tag`, `duplicate-item-tag`, `unknown-member`, `invalid-op`, the rule-validation codes (`invalid-weight`, `unknown-cond`, …), and `rule-lock` for a `create` on an item tag that expenses already use.
+
+Apply an accepted plan through the ordinary endpoints: `POST /tags/items` and `/tags/conds` for new labels, `POST /rules` for `create`, `PATCH /rules/{rule_id}` for `replace` (the rule whose `item_tag` matches), and `PATCH /members/{member_id}` with the member's existing `tags` plus `add`. Those endpoints validate again.
+
+`503` means drafting is not configured on this deployment; hide the feature. `502` means the generator failed; offer a retry. A settled or archived event returns `409`. Locally, run the server with `RULE_DRAFT_FIXTURE=true` to get a canned plan for any text.

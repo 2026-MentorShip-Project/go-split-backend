@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"go-split-backend/internal/database"
+	"go-split-backend/internal/ruleassist"
 
 	"github.com/gin-gonic/gin"
 
@@ -15,6 +16,8 @@ import (
 // Handler bundles event endpoints with their database pool.
 type Handler struct {
 	DB database.Store
+	// Drafter answers POST /events/{id}/rules/draft; nil answers 503.
+	Drafter ruleassist.Generator
 }
 
 // New returns a Handler bound to the given pool.
@@ -37,6 +40,7 @@ func (h *Handler) Register(r gin.IRouter) {
 	h.registerSettlementRoutes(g)
 
 	h.registerTemplateRoutes(r)
+	h.registerRuleDraftRoutes(r)
 }
 
 // eventListItem is one row of the dashboard.

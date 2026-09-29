@@ -533,6 +533,45 @@ const docTemplate = `{
                     }
                 }
             },
+            "delete": {
+                "description": "Host only. Settled and archived events are read-only and return 409.",
+                "tags": [
+                    "events"
+                ],
+                "summary": "Delete an active event with all its members, items, and settings",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    }
+                }
+            },
             "patch": {
                 "consumes": [
                     "application/json"
@@ -1339,6 +1378,83 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/events/{id}/rules/draft": {
+            "post": {
+                "description": "Host-only and read-only: nothing is saved. The generated plan is\nvalidated against the event and returned normalized, with every\nrule that cannot be applied moved to issues. Apply the plan\nthrough the ordinary tag, rule and member endpoints.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settings"
+                ],
+                "summary": "Draft split rules from a plain-language description",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Description of how to split",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/events.ruleDraftRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/events.ruleDraftResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/events.errorResponse"
                         }
@@ -2838,6 +2954,33 @@ const docTemplate = `{
                 }
             }
         },
+        "events.ruleDraftRequest": {
+            "type": "object",
+            "required": [
+                "text"
+            ],
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "minLength": 1
+                }
+            }
+        },
+        "events.ruleDraftResponse": {
+            "type": "object",
+            "properties": {
+                "issues": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ruleassist.Issue"
+                    }
+                },
+                "plan": {
+                    "$ref": "#/definitions/ruleassist.Plan"
+                }
+            }
+        },
         "events.ruleUpdateRequest": {
             "type": "object",
             "properties": {
@@ -2992,6 +3135,124 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "ruleassist.Issue": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "$ref": "#/definitions/rulespec.Code"
+                },
+                "detail": {
+                    "type": "string"
+                },
+                "item_tag": {
+                    "type": "string"
+                },
+                "member_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "ruleassist.MemberCond": {
+            "type": "object",
+            "properties": {
+                "add": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "member_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "ruleassist.Op": {
+            "type": "string",
+            "enum": [
+                "create",
+                "replace"
+            ],
+            "x-enum-varnames": [
+                "Create",
+                "Replace"
+            ]
+        },
+        "ruleassist.Plan": {
+            "type": "object",
+            "properties": {
+                "member_conds": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ruleassist.MemberCond"
+                    }
+                },
+                "new_cond_tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "new_item_tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "note": {
+                    "type": "string"
+                },
+                "rules": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ruleassist.PlannedRule"
+                    }
+                }
+            }
+        },
+        "ruleassist.PlannedRule": {
+            "type": "object",
+            "properties": {
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "item_tag": {
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "op": {
+                    "$ref": "#/definitions/ruleassist.Op"
+                },
+                "rest": {
+                    "type": "object"
+                }
+            }
+        },
+        "rulespec.Code": {
+            "type": "string",
+            "enum": [
+                "invalid-groups",
+                "invalid-rest",
+                "empty-cond-set",
+                "duplicate-cond-set",
+                "unknown-cond",
+                "invalid-mode",
+                "invalid-weight"
+            ],
+            "x-enum-varnames": [
+                "InvalidGroups",
+                "InvalidRest",
+                "EmptyCondSet",
+                "DuplicateCondSet",
+                "UnknownCond",
+                "InvalidMode",
+                "InvalidWeight"
+            ]
         },
         "splitengine.Share": {
             "type": "object",

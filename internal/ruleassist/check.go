@@ -3,6 +3,7 @@ package ruleassist
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"go-split-backend/internal/rulespec"
 )
@@ -46,6 +47,8 @@ func Check(p Plan, in Input) (Plan, []Issue) {
 	issues := []Issue{}
 	seen := map[string]bool{}
 	out := p
+	out.NewItemTags = missing(p.NewItemTags, in.ItemTags)
+	out.NewCondTags = missing(p.NewCondTags, in.CondTags)
 	out.Rules = make([]PlannedRule, 0, len(p.Rules))
 
 	for _, rule := range p.Rules {
@@ -115,6 +118,18 @@ func refuseRule(rule PlannedRule, items []string, seen map[string]bool) *Issue {
 			Detail: fmt.Sprintf("op must be %q or %q", Create, Replace)}
 	}
 	return nil
+}
+
+// missing keeps the proposed labels the event lacks, once each; adding one it
+// already has is refused with 409.
+func missing(proposed, existing []string) []string {
+	out := []string{}
+	for _, v := range proposed {
+		if !slices.Contains(existing, v) && !slices.Contains(out, v) {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func union(a, b []string) []string {

@@ -50,8 +50,8 @@ const (
 type PlannedRule struct {
 	Op      Op              `json:"op"`
 	ItemTag string          `json:"item_tag"`
-	Groups  json.RawMessage `json:"groups"`
-	Rest    json.RawMessage `json:"rest,omitempty"`
+	Groups  json.RawMessage `json:"groups" swaggertype:"array,object"`
+	Rest    json.RawMessage `json:"rest,omitempty" swaggertype:"object"`
 	Note    string          `json:"note,omitempty"`
 }
 
