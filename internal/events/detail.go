@@ -16,6 +16,7 @@ import (
 
 func (h *Handler) registerDetailRoutes(g *gin.RouterGroup) {
 	g.PATCH("/:id", auth.RequireEventRole(h.DB, "host"), h.PatchEvent)
+	g.DELETE("/:id", auth.RequireEventRole(h.DB, "host"), h.DeleteEvent)
 	g.GET("/:id", auth.RequireEventRole(h.DB, "host", "co", "member"), h.GetEvent)
 }
 

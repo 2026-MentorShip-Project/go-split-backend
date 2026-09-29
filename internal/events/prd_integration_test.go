@@ -177,7 +177,7 @@ func TestPRDLifecycle(t *testing.T) {
 	for _, route := range []struct {
 		method, path string
 		body         any
-	}{{"POST", "/items", gin.H{"payer_member_id": hid}}, {"PATCH", fmt.Sprintf("/items/%d", card.ID), gin.H{"details": []any{}}}, {"DELETE", fmt.Sprintf("/items/%d", card.ID), nil}, {"PATCH", fmt.Sprintf("/members/%d", mid), gin.H{"tags": []string{}}}, {"POST", "/rules", gin.H{}}, {"POST", "/tags/items", gin.H{"label": "late"}}, {"PATCH", "", gin.H{"name": "late"}}} {
+	}{{"POST", "/items", gin.H{"payer_member_id": hid}}, {"PATCH", fmt.Sprintf("/items/%d", card.ID), gin.H{"details": []any{}}}, {"DELETE", fmt.Sprintf("/items/%d", card.ID), nil}, {"PATCH", fmt.Sprintf("/members/%d", mid), gin.H{"tags": []string{}}}, {"POST", "/rules", gin.H{}}, {"POST", "/tags/items", gin.H{"label": "late"}}, {"PATCH", "", gin.H{"name": "late"}}, {"DELETE", "", nil}} {
 		a.call(t, host, route.method, base+route.path, route.body, 409)
 	}
 	a.call(t, "", "GET", "/auth/invite/"+e.InviteCode, nil, 410)
@@ -198,6 +198,26 @@ func TestPRDLifecycle(t *testing.T) {
 		t.Fatal("snapshot drift")
 	}
 	a.call(t, host, "PUT", fmt.Sprintf("%s/transfers/%d/%d/paid", base, mid, hid), nil, 404)
+}
+func TestPRDDeleteEvent(t *testing.T) {
+	a := newPRDAPI(t)
+	host := a.host(t)
+	e := decodePRD[createEventResponse](t, a.call(t, host, "POST", "/events", gin.H{"name": "Doomed", "template": "自訂"}, 201))
+	base := fmt.Sprintf("/events/%d", e.ID)
+	join := gin.H{"code": e.InviteCode, "email": "member@example.com", "phone": "0912345678", "name": "member"}
+	guest := "session=" + a.call(t, "", "POST", "/auth/join", join, 200).Result().Cookies()[0].Value
+	members := decodePRD[membersResponse](t, a.call(t, host, "GET", base+"/members", nil, 200))
+	a.call(t, host, "POST", base+"/items", gin.H{"payer_member_id": members.Members[1].ID, "details": []any{gin.H{"name": "food", "amount": 100}}}, 201)
+
+	a.call(t, guest, "DELETE", base, nil, 403)
+	a.call(t, host, "DELETE", base, nil, 204)
+
+	a.call(t, host, "GET", base, nil, 404)
+	a.call(t, "", "GET", "/auth/invite/"+e.InviteCode, nil, 404)
+	var left int
+	if err := a.db.QueryRow(t.Context(), "SELECT (SELECT count(*) FROM event_members WHERE event_id=$1) + (SELECT count(*) FROM items WHERE event_id=$1)", e.ID).Scan(&left); err != nil || left != 0 {
+		t.Fatalf("children left %d %v", left, err)
+	}
 }
 func TestPRDRuleLocks(t *testing.T) {
 	a := newPRDAPI(t)

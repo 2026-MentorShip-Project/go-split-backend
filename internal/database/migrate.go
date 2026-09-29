@@ -92,6 +92,10 @@ func applyOne(ctx context.Context, pool *pgxpool.Pool, name string) error {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// CREATE EXTENSION IF NOT EXISTS races across sessions; serialize migrations database-wide.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('go-split-migrations'))`); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx, string(sqlBytes)); err != nil {
 		return err
 	}
