@@ -86,7 +86,7 @@ func (h *Handler) PostRuleDraft(c *gin.Context) {
 
 	plan, err := h.Drafter.Draft(ctx, in)
 	switch {
-	case errors.Is(err, ruleassist.ErrNotConfigured), errors.Is(err, ruleassist.ErrNotImplemented):
+	case errors.Is(err, ruleassist.ErrNotConfigured):
 		respondErr(c, http.StatusServiceUnavailable, "rule drafting is not configured")
 		return
 	case err != nil:
