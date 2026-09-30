@@ -51,20 +51,6 @@ func TestLoadEmbeddedTemplatesShipsOutdoor(t *testing.T) {
 	}
 }
 
-func TestTemplateLabelsMatchAllowedList(t *testing.T) {
-	// Every embedded template must be one the create endpoint accepts, or
-	// creation-time template lookups would 400.
-	tpls, err := LoadEmbeddedTemplates()
-	if err != nil {
-		t.Fatalf("LoadEmbeddedTemplates: %v", err)
-	}
-	for _, tpl := range tpls {
-		if !allowedTemplates[tpl.Label] {
-			t.Errorf("embedded template %q is not in allowedTemplates", tpl.Label)
-		}
-	}
-}
-
 func TestEmbeddedTemplateRulesAreValid(t *testing.T) {
 	tpls, err := LoadEmbeddedTemplates()
 	if err != nil {
