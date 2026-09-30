@@ -65,3 +65,22 @@ calls.
 - **Fix.** Turn on deletion protection now, since it's free. Switch to
   `REGIONAL` (with a standby in another zone) on a dedicated-core tier when
   uptime matters.
+
+## Templates are identified by their display label
+
+- **What.** Templates have no stable ID; the Mandarin display label (e.g.
+  `烤肉/露營模板`) is the identifier. `allowedTemplates` in
+  `internal/events/create.go` is keyed by label and hard-coded rather than read
+  from the `templates` table (see the TODO there). Events store the label in
+  `events.template`, and `GET /templates/summary?label=` looks templates up by
+  label. The label is a query parameter because labels can contain `/`.
+- **Why.** The templates are few and written in-house, so labels were unique
+  and convenient. Reusing them avoided a schema field and a mapping layer.
+- **Impact.** Rewording a label, even to fix a typo, changes the identifier:
+  client links break and existing events keep pointing at the old label.
+  Translating labels would change the identifier per language. Clients must
+  percent-encode labels in URLs, and logs show the encoded form.
+- **Fix.** Give each template a stable ASCII key; the embedded JSON filenames
+  (`outdoor`, `dinner`, `travel`, `custom`) already work as one. Look templates
+  up by key (`/templates/:key/summary`), keep the label for display only, and
+  migrate `events.template` from label to key.
