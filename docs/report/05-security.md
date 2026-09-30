@@ -229,7 +229,7 @@ must approve.
 | A06 Vulnerable components | **Gap:** no dependency or image scanning |
 | A07 Identification and authentication failures | Google claims verified; fixation-proof sessions. **Gaps:** no rate limiting; pre-hijack via password sign-up |
 | A08 Software and data integrity | WIF in CD; engine version in the snapshot. Actions pinned by tag, not commit SHA |
-| A09 Logging and monitoring failures | **Gap:** no request logs; most 500s don't log their cause (section 4) |
+| A09 Logging and monitoring failures | Cloud Run logs every request and records request metrics. **Gap:** most 500s don't log their cause, and app logs aren't linked to requests (section 4) |
 | A10 SSRF | Not applicable: the only outbound calls go to fixed Google URLs |
 
 ## Open risks, most serious first

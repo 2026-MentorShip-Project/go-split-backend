@@ -199,9 +199,10 @@ Recorded in section 6 where they're significant:
 
 - **No health probes.** `/healthz` pings the database, but Terraform
   configures no Cloud Run startup or liveness probe, so it is only used by CI.
-- **Errors are hard to diagnose.** Most 500s return a fixed message without
-  logging the underlying error, there's no request logging, and there are no
-  request ids or metrics.
+- **Errors don't record their cause.** Cloud Run's request logs and metrics
+  show which requests failed, but most 500s return a fixed message without
+  logging the underlying error, and the app's plain-text logs aren't linked
+  to their request by trace id.
 - **No query or server timeouts.** A stuck query holds its connection and the
   event lock until Cloud Run's request timeout.
 - **Invite-code retry can't recover.** It runs inside the create-event
