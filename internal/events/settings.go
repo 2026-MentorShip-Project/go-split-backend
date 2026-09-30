@@ -36,6 +36,7 @@ func (h *Handler) registerSettingsRoutes(g *gin.RouterGroup) {
 
 	g.GET("/:id/rules", anyRole, h.GetRules)
 	g.POST("/:id/rules", hostOnly, h.PostRule)
+	g.POST("/:id/rules/apply", hostOnly, h.PostRuleApply)
 	g.PATCH("/:id/rules/:rule_id", hostOnly, h.PatchRule)
 	g.DELETE("/:id/rules/:rule_id", hostOnly, h.DeleteRule)
 }

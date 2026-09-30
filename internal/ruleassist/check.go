@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
+	"unicode/utf8"
 
 	"go-split-backend/internal/rulespec"
 )
@@ -15,6 +17,7 @@ const (
 	DuplicateItemTag rulespec.Code = "duplicate-item-tag"
 	UnknownMember    rulespec.Code = "unknown-member"
 	InvalidOp        rulespec.Code = "invalid-op"
+	InvalidLabel     rulespec.Code = "invalid-label"
 )
 
 // Issue is one reason a plan cannot be applied as written.
@@ -33,8 +36,11 @@ type Issue struct {
 // Tags the plan itself declares count as available, since they would be created
 // in the same transaction.
 func Check(p Plan, in Input) (Plan, []Issue) {
-	items := union(in.ItemTags, p.NewItemTags)
-	conds := union(in.CondTags, p.NewCondTags)
+	issues := []Issue{}
+	newItems := newLabels(p.NewItemTags, in.ItemTags, &issues)
+	newConds := newLabels(p.NewCondTags, in.CondTags, &issues)
+	items := union(in.ItemTags, newItems)
+	conds := union(in.CondTags, newConds)
 	members := map[int64]bool{}
 	for _, m := range in.Members {
 		members[m.ID] = true
@@ -44,11 +50,10 @@ func Check(p Plan, in Input) (Plan, []Issue) {
 		existing[r.ItemTag] = true
 	}
 
-	issues := []Issue{}
 	seen := map[string]bool{}
 	out := p
-	out.NewItemTags = missing(p.NewItemTags, in.ItemTags)
-	out.NewCondTags = missing(p.NewCondTags, in.CondTags)
+	out.NewItemTags = newItems
+	out.NewCondTags = newConds
 	out.Rules = make([]PlannedRule, 0, len(p.Rules))
 
 	for _, rule := range p.Rules {
@@ -120,11 +125,17 @@ func refuseRule(rule PlannedRule, items []string, seen map[string]bool) *Issue {
 	return nil
 }
 
-// missing keeps the proposed labels the event lacks, once each; adding one it
-// already has is refused with 409.
-func missing(proposed, existing []string) []string {
+// newLabels keeps the proposed labels the event lacks, once each; adding one it
+// already has is refused with 409. Labels the tag endpoints would refuse are
+// reported instead.
+func newLabels(proposed, existing []string, issues *[]Issue) []string {
 	out := []string{}
 	for _, v := range proposed {
+		if v == "" || strings.TrimSpace(v) != v || utf8.RuneCountInString(v) > 64 {
+			*issues = append(*issues, Issue{Code: InvalidLabel,
+				Detail: fmt.Sprintf("label %q must be 1–64 characters without surrounding spaces", v)})
+			continue
+		}
 		if !slices.Contains(existing, v) && !slices.Contains(out, v) {
 			out = append(out, v)
 		}

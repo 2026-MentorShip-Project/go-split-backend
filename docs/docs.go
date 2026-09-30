@@ -1385,6 +1385,74 @@ const docTemplate = `{
                 }
             }
         },
+        "/events/{id}/rules/apply": {
+            "post": {
+                "description": "Host-only. Send the plan from POST /rules/draft unchanged. It is\nchecked again against the event as it is now; if anything no\nlonger applies, nothing is written and 422 lists why. Otherwise\nnew tags, rules and member conditions are saved together.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settings"
+                ],
+                "summary": "Apply a drafted rule plan in one transaction",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Plan returned by the draft endpoint",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/ruleassist.Plan"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "no content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/events.ruleApplyRejection"
+                        }
+                    }
+                }
+            }
+        },
         "/events/{id}/rules/draft": {
             "post": {
                 "description": "Host-only and read-only: nothing is saved. The generated plan is\nvalidated against the event and returned normalized, with every\nrule that cannot be applied moved to issues. Apply the plan\nthrough the ordinary tag, rule and member endpoints.",
@@ -2953,6 +3021,20 @@ const docTemplate = `{
             "properties": {
                 "role": {
                     "type": "string"
+                }
+            }
+        },
+        "events.ruleApplyRejection": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "issues": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ruleassist.Issue"
+                    }
                 }
             }
         },

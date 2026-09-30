@@ -41,6 +41,8 @@ func TestCheckRefusesPlansTheEventCannotHold(t *testing.T) {
 		{"group with no conditions", Plan{Rules: []PlannedRule{rule("肉品", `[{"conds":[],"mode":"exclude"}]`)}}, rulespec.EmptyCondSet, 0},
 		{"condition for a stranger", Plan{MemberConds: []MemberCond{{MemberID: 99, Add: []string{"吃素"}}}}, UnknownMember, 0},
 		{"condition outside the catalog for a member", Plan{MemberConds: []MemberCond{{MemberID: 1, Add: []string{"未知"}}}}, rulespec.UnknownCond, 0},
+		{"label with surrounding spaces", Plan{NewItemTags: []string{" 飲料"}}, InvalidLabel, 0},
+		{"label longer than 64 characters", Plan{NewCondTags: []string{strings.Repeat("長", 65)}}, InvalidLabel, 0},
 	}
 
 	for _, c := range cases {
