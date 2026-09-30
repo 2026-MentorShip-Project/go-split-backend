@@ -53,19 +53,21 @@ func (h *Handler) GetTemplates(c *gin.Context) {
 }
 
 type templateSummaryResponse struct {
-	Label          string `json:"label"`
-	Description    string `json:"description"`
-	Soon           bool   `json:"soon"`
-	ItemTagCount   int    `json:"item_tag_count"`
-	CondTagCount   int    `json:"cond_tag_count"`
-	RuleCount      int    `json:"rule_count"`
-	RuleGroupCount int    `json:"rule_group_count"`
+	Label          string   `json:"label"`
+	Description    string   `json:"description"`
+	Soon           bool     `json:"soon"`
+	ItemTagCount   int      `json:"item_tag_count"`
+	CondTagCount   int      `json:"cond_tag_count"`
+	RuleCount      int      `json:"rule_count"`
+	RuleGroupCount int      `json:"rule_group_count"`
+	RuleTags       []string `json:"rule_tags"`
 }
 
 // GetTemplateSummary godoc
 // @Summary     Summarize one template
 // @Description Returns counts of item tags, condition tags, rules, and rule
-// @Description groups for the template with the given label. The label is a
+// @Description groups, plus each rule's tag in order, for the template with
+// @Description the given label. The label is a
 // @Description query parameter because labels can contain "/".
 // @Tags        templates
 // @Produce     json
@@ -106,6 +108,7 @@ func summarizeTemplate(it templateItem) (templateSummaryResponse, error) {
 		ItemTags []json.RawMessage `json:"item_tags"`
 		CondTags []json.RawMessage `json:"cond_tags"`
 		Rules    []struct {
+			Tag    string            `json:"tag"`
 			Groups []json.RawMessage `json:"groups"`
 		} `json:"rules"`
 	}
@@ -113,8 +116,10 @@ func summarizeTemplate(it templateItem) (templateSummaryResponse, error) {
 		return templateSummaryResponse{}, err
 	}
 	groups := 0
+	tags := make([]string, 0, len(content.Rules))
 	for _, r := range content.Rules {
 		groups += len(r.Groups)
+		tags = append(tags, r.Tag)
 	}
 	return templateSummaryResponse{
 		Label:          it.Label,
@@ -124,6 +129,7 @@ func summarizeTemplate(it templateItem) (templateSummaryResponse, error) {
 		CondTagCount:   len(content.CondTags),
 		RuleCount:      len(content.Rules),
 		RuleGroupCount: groups,
+		RuleTags:       tags,
 	}, nil
 }
 

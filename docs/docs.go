@@ -2144,7 +2144,7 @@ const docTemplate = `{
         },
         "/templates/summary": {
             "get": {
-                "description": "Returns counts of item tags, condition tags, rules, and rule\ngroups for the template with the given label. The label is a\nquery parameter because labels can contain \"/\".",
+                "description": "Returns counts of item tags, condition tags, rules, and rule\ngroups, plus each rule's tag in order, for the template with\nthe given label. The label is a\nquery parameter because labels can contain \"/\".",
                 "produces": [
                     "application/json"
                 ],
@@ -3122,6 +3122,12 @@ const docTemplate = `{
                 },
                 "rule_group_count": {
                     "type": "integer"
+                },
+                "rule_tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "soon": {
                     "type": "boolean"
