@@ -18,10 +18,11 @@ type Handler struct {
 	DB database.Store
 	// Drafter answers POST /events/{id}/rules/draft; nil answers 503.
 	Drafter ruleassist.Generator
+	drafts  *draftLimiter
 }
 
 // New returns a Handler bound to the given pool.
-func New(db database.Store) *Handler { return &Handler{DB: db} }
+func New(db database.Store) *Handler { return &Handler{DB: db, drafts: newDraftLimiter()} }
 
 // Register wires the /events group with session-required middleware.
 func (h *Handler) Register(r gin.IRouter) {

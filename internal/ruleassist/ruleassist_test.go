@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"go-split-backend/internal/rulespec"
+
+	"google.golang.org/genai"
 )
 
 func event() Input {
@@ -200,7 +202,7 @@ func TestVertexStaysOffUntilFullyConfigured(t *testing.T) {
 		if c.Enabled() {
 			t.Errorf("%+v reported enabled", c)
 		}
-		if _, err := NewVertexGenerator(c); !errors.Is(err, ErrNotConfigured) {
+		if _, err := NewVertexGenerator(t.Context(), c); !errors.Is(err, ErrNotConfigured) {
 			t.Errorf("%+v: err = %v, want ErrNotConfigured", c, err)
 		}
 	}
@@ -208,7 +210,7 @@ func TestVertexStaysOffUntilFullyConfigured(t *testing.T) {
 	if !full.Enabled() {
 		t.Fatal("complete config reported disabled")
 	}
-	if _, err := NewVertexGenerator(full); err != nil {
+	if _, err := newVertexGenerator(t.Context(), full, &genai.ClientConfig{Credentials: fakeCredentials()}); err != nil {
 		t.Fatalf("complete config refused: %v", err)
 	}
 }

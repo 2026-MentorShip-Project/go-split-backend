@@ -45,13 +45,13 @@ variable "allowed_origins" {
 
 variable "vertex_location" {
   type        = string
-  description = "Vertex AI location for rule drafting, e.g. asia-east1; empty disables the feature"
+  description = "Vertex AI location for rule drafting, e.g. global (asia-east1 serves no Gemini text models); empty disables the feature"
   default     = ""
 }
 
 variable "vertex_model" {
   type        = string
-  description = "Vertex AI model id used to draft split rules; empty disables the feature"
+  description = "Vertex AI model id used to draft split rules, e.g. gemini-3.5-flash-lite; empty disables the feature"
   default     = ""
 }
 

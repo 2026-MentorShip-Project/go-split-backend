@@ -3,6 +3,7 @@
 package events
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -90,4 +91,25 @@ func TestRuleDraftGeneratorFailureIsBadGateway(t *testing.T) {
 	host, _, base := newDraftEvent(t, a)
 
 	a.call(t, host, "POST", base+"/rules/draft", gin.H{"text": sampleDraftText}, 502)
+}
+
+func TestRuleDraftLimitsEachHost(t *testing.T) {
+	a := newPRDAPIWithDrafter(t, ruleassist.SampleFixture())
+	host, _, base := newDraftEvent(t, a)
+
+	for range draftBurst {
+		a.call(t, host, "POST", base+"/rules/draft", gin.H{"text": sampleDraftText}, 200)
+	}
+	w := a.call(t, host, "POST", base+"/rules/draft", gin.H{"text": sampleDraftText}, 429)
+
+	if w.Header().Get("Retry-After") == "" {
+		t.Fatal("429 without Retry-After")
+	}
+}
+
+func TestRuleDraftTimeoutIsGatewayTimeout(t *testing.T) {
+	a := newPRDAPIWithDrafter(t, &ruleassist.FixtureGenerator{Err: context.DeadlineExceeded})
+	host, _, base := newDraftEvent(t, a)
+
+	a.call(t, host, "POST", base+"/rules/draft", gin.H{"text": sampleDraftText}, 504)
 }

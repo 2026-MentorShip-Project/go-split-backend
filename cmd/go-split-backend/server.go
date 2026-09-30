@@ -71,7 +71,7 @@ func main() {
 
 	auth.New(db, auth.NewGoogleVerifier(os.Getenv("GOOGLE_CLIENT_ID"))).Register(r)
 	eventsHandler := events.New(db)
-	eventsHandler.Drafter = ruleDrafter()
+	eventsHandler.Drafter = ruleDrafter(ctx)
 	eventsHandler.Register(r)
 	s := &http.Server{
 		Addr:    ":8080",
@@ -102,13 +102,17 @@ func main() {
 
 // ruleDrafter picks the rule-drafting backend. RULE_DRAFT_FIXTURE=true serves
 // canned plans for local development; otherwise Vertex, when configured.
-func ruleDrafter() ruleassist.Generator {
+func ruleDrafter(ctx context.Context) ruleassist.Generator {
 	if os.Getenv("RULE_DRAFT_FIXTURE") == "true" {
 		log.Warn("rule drafting answers from fixtures")
 		return ruleassist.SampleFixture()
 	}
-	g, err := ruleassist.NewVertexGenerator(ruleassist.ConfigFromEnv())
+	g, err := ruleassist.NewVertexGenerator(ctx, ruleassist.ConfigFromEnv())
+	if errors.Is(err, ruleassist.ErrNotConfigured) {
+		return nil
+	}
 	if err != nil {
+		log.WithError(err).Error("rule drafting disabled")
 		return nil
 	}
 	return g

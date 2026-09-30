@@ -87,6 +87,9 @@ jobs:
           TF_VAR_billing_account_id: ${{ vars.BILLING_ACCOUNT_ID }}
           TF_VAR_monthly_budget: ${{ vars.MONTHLY_BUDGET || '20' }}
           TF_VAR_budget_alert_emails: ${{ vars.BUDGET_ALERT_EMAILS || '[]' }}
+          # Rule drafting stays off while either is unset.
+          TF_VAR_vertex_location: ${{ vars.VERTEX_LOCATION }}
+          TF_VAR_vertex_model: ${{ vars.VERTEX_MODEL }}
         run: |
           terraform init -backend-config="bucket=${TF_STATE_BUCKET}"
           terraform apply -auto-approve -input=false
