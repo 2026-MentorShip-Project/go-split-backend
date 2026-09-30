@@ -15,15 +15,26 @@ import (
 	"go-split-backend/internal/auth"
 )
 
-// allowedTemplates includes placeholders that start with empty settings.
-var allowedTemplates = map[string]bool{
-	"自訂":      true,
-	"烤肉/露營模板": true,
-	"聚餐模板":    true,
-	"唱歌模板":    true,
-	"國內旅遊模板": true,
-	"出國旅遊模板":  true,
-	"社團活動模板":  true,
+// allowedTemplates holds the label of every embedded templates/*.json file,
+// the same files SeedTemplates writes to the templates table. Adding a
+// template is adding a file.
+var allowedTemplates = mustTemplateLabels()
+
+// mustTemplateLabels panics because the files are compiled in: a bad or
+// duplicate file is a code change that must stop the binary from starting.
+func mustTemplateLabels() map[string]bool {
+	tpls, err := LoadEmbeddedTemplates()
+	if err != nil {
+		panic(fmt.Sprintf("load embedded templates: %v", err))
+	}
+	labels := make(map[string]bool, len(tpls))
+	for _, t := range tpls {
+		if labels[t.Label] {
+			panic(fmt.Sprintf("duplicate template label %q", t.Label))
+		}
+		labels[t.Label] = true
+	}
+	return labels
 }
 
 // registerCreateRoutes is called from Handler.Register so the /events group
@@ -133,7 +144,7 @@ func createEventTx(ctx context.Context, db database.Store, accountID int64, req 
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var content templateContent
-	// TODO: replace hard-coded template names with a query to the templates table, and allow the user to create their own templates.
+	// TODO: allow users to create their own templates.
 	if req.Template != "自訂" {
 		content, err = loadTemplateContent(ctx, tx, req.Template)
 		if errors.Is(err, pgx.ErrNoRows) {
