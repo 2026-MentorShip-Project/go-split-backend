@@ -193,6 +193,64 @@ Cloud SQL has daily backups and point-in-time recovery, encrypted connections
 only, and disk autoresize. It runs in one zone with no standby, so a zone or
 instance failure means downtime until it recovers (see section 6).
 
+## Observability and its limits
+
+We rely on what Google Cloud provides by default, with no extra tooling:
+
+| Signal | What we get | Source |
+| --- | --- | --- |
+| Request logs | One entry per request: method, URL, status, latency, size, user agent, client IP, trace id, instance | Cloud Run, automatic |
+| App logs | Whatever the server writes to stdout/stderr (logrus, plain text) | Cloud Run, automatic |
+| Metrics | Request count and latency, instance count, CPU, memory, startup latency, concurrency, bytes in/out | Cloud Run, built in |
+| Traces | One span per sampled request, at most 1 request per 10 s per instance, free | Cloud Run → Cloud Trace, automatic |
+| Profiles | CPU profiles every 10 minutes, for PGO | Our own uploader to GCS |
+
+This shows **that** a request failed, when, and on which instance. It
+mostly can't show **why**, or **which endpoint** is slow:
+
+- **Request logs have no content.** They don't include request or response
+  bodies or the caller's identity. A failing `POST /events/42/items` is
+  visible, but not what was sent or by whom.
+- **App logs don't fill the gap yet.** Most 500s don't log their cause. The
+  logs are plain text, so Cloud Logging stores them without a severity, and
+  without the `logging.googleapis.com/trace` field they aren't grouped under
+  their request (section 6).
+- **Logs are kept for 30 days.** That's the default for the `_Default` log
+  bucket; it can be raised to up to 3,650 days at extra storage cost. A
+  problem reported after a month has no logs left.
+- **Volume isn't a constraint at our scale.** An entry can be up to 256 KiB,
+  so stack traces fit. The ingestion quota is 300 MB per minute per project
+  (4.8 GB in the largest regions); past it, writes fail rather than being
+  sampled. Reading through the API is limited to 60 list requests per minute,
+  so bulk analysis needs a BigQuery export or Log Analytics.
+- **Metrics can't be broken down by endpoint.** Request count and latency can
+  be grouped by response code and revision, but they have no label for the
+  URL path, so "P95 went up" doesn't say which route. A log-based metric could
+  add the route, but our paths contain ids (`/events/42/items`), so they'd
+  need normalizing first.
+- **Metrics are coarse, and detail fades.** They're sampled about once a
+  minute, so a spike of a few seconds is averaged away. Data is kept at full
+  resolution for 6 weeks, then downsampled to 10-minute intervals or dropped,
+  depending on the metric type. Latency percentiles are computed from
+  histogram buckets, so they're approximate.
+- **Nothing from inside the process.** There's no measure of time spent
+  waiting for a pool connection or for the event lock, of query durations,
+  or of Go runtime health (goroutines, GC). Section 3 found those waits are
+  the main latency factor. Cloud SQL's own metrics cover the database side
+  in part.
+- **Traces show only the total time.** Cloud Run's automatic trace has one
+  span per request, so it can't show which query or lock took the time.
+  Child spans need OpenTelemetry instrumentation, which Cloud Trace bills
+  for.
+
+The cheapest improvements, in order:
+
+1. JSON logs with `severity`, the trace id, and the error cause on every 500.
+2. Log the route pattern (Gin's `c.FullPath()`, e.g. `/events/:id/items`)
+   with errors and slow requests.
+3. Raise log retention to about 90 days.
+4. If needed, OpenTelemetry spans around pool acquisition and queries.
+
 ## Known gaps
 
 Recorded in section 6 where they're significant:
