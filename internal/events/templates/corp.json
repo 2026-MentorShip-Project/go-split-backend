@@ -1,0 +1,21 @@
+{
+  "label": "公司旅遊模板",
+  "description": "福委會統辦，只分攤自付差額與眷屬費用",
+  "item_tags": ["員工自付差額", "眷屬團費", "個人代購", "遊覽車", "單人房差", "房型升等", "代訂餐點", "桌菜", "飲料", "酒精飲品", "門票", "DIY體驗", "小費", "共同採買"],
+  "cond_tags": ["眷屬", "小孩", "小孩不佔床", "幼兒", "長者", "身障/陪同", "未成行", "自行前往", "單人房", "升等房型", "不訂餐", "不喝飲料", "不喝酒/開車", "不做DIY"],
+  "rules": [
+    {"tag": "員工自付差額", "groups": [{"conds": ["眷屬"], "mode": "exclude"}]},
+    {"tag": "眷屬團費", "groups": [{"conds": ["幼兒"], "mode": "exclude"}, {"conds": ["小孩不佔床"], "mode": "weight", "weight": 0.6}, {"conds": ["眷屬"], "mode": "weight", "weight": 1}], "rest": {"mode": "exclude"}},
+    {"tag": "遊覽車", "groups": [{"conds": ["自行前往"], "mode": "exclude"}, {"conds": ["幼兒"], "mode": "exclude"}]},
+    {"tag": "單人房差", "groups": [{"conds": ["單人房"], "mode": "weight", "weight": 1}], "rest": {"mode": "exclude"}},
+    {"tag": "房型升等", "groups": [{"conds": ["升等房型"], "mode": "weight", "weight": 1}], "rest": {"mode": "exclude"}},
+    {"tag": "代訂餐點", "groups": [{"conds": ["未成行"], "mode": "exclude"}, {"conds": ["不訂餐"], "mode": "exclude"}, {"conds": ["幼兒"], "mode": "exclude"}, {"conds": ["小孩"], "mode": "weight", "weight": 0.5}, {"conds": ["小孩不佔床"], "mode": "weight", "weight": 0.5}]},
+    {"tag": "桌菜", "groups": [{"conds": ["幼兒"], "mode": "exclude"}, {"conds": ["小孩"], "mode": "weight", "weight": 0.5}, {"conds": ["小孩不佔床"], "mode": "weight", "weight": 0.5}]},
+    {"tag": "飲料", "groups": [{"conds": ["未成行"], "mode": "exclude"}, {"conds": ["不喝飲料"], "mode": "exclude"}]},
+    {"tag": "酒精飲品", "groups": [{"conds": ["未成行"], "mode": "exclude"}, {"conds": ["不喝酒/開車"], "mode": "exclude"}, {"conds": ["小孩"], "mode": "exclude"}, {"conds": ["小孩不佔床"], "mode": "exclude"}, {"conds": ["幼兒"], "mode": "exclude"}]},
+    {"tag": "門票", "groups": [{"conds": ["未成行"], "mode": "exclude"}, {"conds": ["幼兒"], "mode": "exclude"}, {"conds": ["小孩"], "mode": "weight", "weight": 0.5}, {"conds": ["小孩不佔床"], "mode": "weight", "weight": 0.5}, {"conds": ["長者"], "mode": "weight", "weight": 0.5}, {"conds": ["身障/陪同"], "mode": "weight", "weight": 0.5}]},
+    {"tag": "DIY體驗", "groups": [{"conds": ["未成行"], "mode": "exclude"}, {"conds": ["不做DIY"], "mode": "exclude"}, {"conds": ["幼兒"], "mode": "exclude"}]},
+    {"tag": "小費", "groups": [{"conds": ["未成行"], "mode": "exclude"}, {"conds": ["幼兒"], "mode": "exclude"}]},
+    {"tag": "共同採買", "groups": [{"conds": ["未成行"], "mode": "exclude"}]}
+  ]
+}
