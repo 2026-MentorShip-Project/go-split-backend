@@ -95,19 +95,24 @@ calls.
   routes were added "for easy manual testing". The rest isn't stated.
 - **Impact and fix.** See section 5, "Open risks".
 
-## Production failures are hard to see
+## Production errors don't record their cause
 
-- **What.** `gin.New()` runs without a request logger. Most 500 responses
-  return a fixed message without logging the underlying error. Logs are plain
-  text, not the JSON that Cloud Logging reads severity from, and there are no
-  request ids or metrics. `/healthz` exists, but Terraform configures no Cloud
-  Run probe that uses it.
+- **What.** Cloud Run already logs every request (method, URL, status,
+  latency, trace id) and records request-count and latency metrics, so the
+  platform shows *that* a request failed. The app doesn't say *why*: most 500
+  responses return a fixed message without logging the underlying error. The
+  app's logs are plain text, so Cloud Logging files them with no severity,
+  and without the `logging.googleapis.com/trace` field they aren't linked to
+  their request. `/healthz` exists, but Terraform configures no Cloud Run
+  probe that uses it.
 - **Why.** Not stated. Local debugging was enough during development.
-- **Impact.** A production 500 can't be traced to a cause, and there's no
-  error-rate or latency signal to alert on.
-- **Fix.** Add request-logging middleware with request ids and JSON output,
-  log the error wherever a 500 is returned, and use `/healthz` as the startup
-  and liveness probe.
+- **Impact.** A production 500 shows up in the request log and the error-rate
+  metric, but its cause is lost. App log lines can't be filtered by severity
+  or grouped under their request.
+- **Fix.** Log the error wherever a 500 is returned. Switch logrus to JSON
+  with `severity` and the trace id from `X-Cloud-Trace-Context`. Use
+  `/healthz` as the startup probe and a database-free `/livez` as the
+  liveness probe.
 
 ## CD deploys main without the CI gate
 
