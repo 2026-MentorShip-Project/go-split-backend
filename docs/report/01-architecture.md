@@ -136,7 +136,7 @@ flowchart LR
     end
 
     subgraph GCP["Google Cloud (us-central1)"]
-        subgraph Run["Cloud Run: go-split-backend<br/>0–10 instances, 1 vCPU / 512 MiB"]
+        subgraph Run["Cloud Run: go-split-backend<br/>0–5 instances, 1 vCPU / 512 MiB"]
             API["Gin HTTP API"]
             AUTH["auth<br/>sessions, roles"]
             EVT["events<br/>items, rules, settle"]
@@ -218,7 +218,7 @@ from the snapshot, not a new calculation.
   silent rounding.
 - **Same-origin proxy.** Routing API calls through Vercel keeps the cookie
   first-party, so browsers that block third-party cookies still work.
-- **Scale to zero.** Cloud Run runs 0 to 10 instances. Idle cost is near zero;
+- **Scale to zero.** Cloud Run runs 0 to 5 instances by default (`cloud_run_max_instances`). Idle cost is near zero;
   the trade-off is a cold start on the first request after a quiet period.
 
 ## Delivery pipeline
