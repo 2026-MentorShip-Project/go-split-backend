@@ -2141,6 +2141,53 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/templates/summary": {
+            "get": {
+                "description": "Returns counts of item tags, condition tags, rules, and rule\ngroups for the template with the given label. The label is a\nquery parameter because labels can contain \"/\".",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "templates"
+                ],
+                "summary": "Summarize one template",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Template label",
+                        "name": "label",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/events.templateSummaryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/events.errorResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -3049,6 +3096,32 @@ const docTemplate = `{
                 },
                 "label": {
                     "type": "string"
+                },
+                "soon": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "events.templateSummaryResponse": {
+            "type": "object",
+            "properties": {
+                "cond_tag_count": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "item_tag_count": {
+                    "type": "integer"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "rule_count": {
+                    "type": "integer"
+                },
+                "rule_group_count": {
+                    "type": "integer"
                 },
                 "soon": {
                     "type": "boolean"
