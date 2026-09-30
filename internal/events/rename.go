@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"go-split-backend/internal/database"
-	"go-split-backend/internal/splitengine"
+	"slices"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -79,32 +79,49 @@ func (h *Handler) renameTag(c *gin.Context, item bool) {
 	}
 	c.Status(204)
 }
+
+// rewriteConditionReferences renames old to replacement in every rule group,
+// or removes it when replacement is empty, dropping groups left with no
+// conditions. Only the conds of affected rules change; other fields are kept
+// as stored.
 func rewriteConditionReferences(ctx context.Context, db database.Store, id int64, old, replacement string) error {
 	rules, err := loadRules(ctx, db, id)
 	if err != nil {
 		return err
 	}
 	for _, r := range rules {
-		var groups []splitengine.Group
+		var groups []map[string]json.RawMessage
 		if err = json.Unmarshal(r.Groups, &groups); err != nil {
 			return err
 		}
-		out := []splitengine.Group{}
+		out := make([]map[string]json.RawMessage, 0, len(groups))
+		changed := false
 		for _, g := range groups {
-			tags := []string{}
-			for _, t := range g.Conds {
-				if t == old {
-					if replacement != "" {
-						tags = append(tags, replacement)
-					}
-				} else {
-					tags = append(tags, t)
-				}
+			var conds []string
+			if err = json.Unmarshal(g["conds"], &conds); err != nil {
+				return err
 			}
-			if len(tags) > 0 {
-				g.Conds = tags
+			i := slices.Index(conds, old)
+			if i < 0 {
 				out = append(out, g)
+				continue
 			}
+			changed = true
+			if replacement == "" {
+				conds = slices.Delete(conds, i, i+1)
+			} else {
+				conds[i] = replacement
+			}
+			if len(conds) == 0 {
+				continue
+			}
+			if g["conds"], err = json.Marshal(conds); err != nil {
+				return err
+			}
+			out = append(out, g)
+		}
+		if !changed {
+			continue
 		}
 		raw, err := json.Marshal(out)
 		if err != nil {
