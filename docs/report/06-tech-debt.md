@@ -84,3 +84,189 @@ calls.
   (`outdoor`, `dinner`, `travel`, `custom`) already work as one. Look templates
   up by key (`/templates/:key/summary`), keep the label for display only, and
   migrate `events.template` from label to key.
+
+## Security gaps
+
+- **What.** Guest identities can be taken over by anyone who knows a
+  guest's email and phone. The test-only password routes are live in
+  production. The session cookie is `SameSite=None` with no CSRF defence.
+  Nothing is rate-limited.
+- **Why.** Guests were designed to avoid sign-up friction, and the password
+  routes were added "for easy manual testing". The rest isn't stated.
+- **Impact and fix.** See section 5, "Open risks".
+
+## Production failures are hard to see
+
+- **What.** `gin.New()` runs without a request logger. Most 500 responses
+  return a fixed message without logging the underlying error. Logs are plain
+  text, not the JSON that Cloud Logging reads severity from, and there are no
+  request ids or metrics. `/healthz` exists, but Terraform configures no Cloud
+  Run probe that uses it.
+- **Why.** Not stated. Local debugging was enough during development.
+- **Impact.** A production 500 can't be traced to a cause, and there's no
+  error-rate or latency signal to alert on.
+- **Fix.** Add request-logging middleware with request ids and JSON output,
+  log the error wherever a 500 is returned, and use `/healthz` as the startup
+  and liveness probe.
+
+## CD deploys main without the CI gate
+
+- **What.** CI runs on pull requests only. CD runs on every push to `main`
+  without waiting for CI, and applies Terraform with `-auto-approve`, with no
+  plan review. CI doesn't check formatting, so unformatted code has reached
+  `main` (`internal/events/create.go`).
+- **Why.** Not stated. Every change was expected to arrive through a
+  reviewed pull request.
+- **Impact.** A direct push, or a merge whose CI failed, ships to production,
+  and infrastructure changes apply unreviewed.
+- **Fix.** Run CI on pushes to `main` and make the deploy job depend on it.
+  Add a `gofmt` check, and a `terraform plan` step that needs approval.
+
+## Migrations are forward-only
+
+- **What.** A custom runner applies SQL files in filename order, with no
+  down migrations. Two files share the `0004_` prefix. Migrations run in CD
+  and again at every instance start. Destructive changes (for example
+  `0012_drop_member_binding.sql`) apply while the previous revision is still
+  serving.
+- **Why.** CD migrates first "so the new revision boots against a
+  fully-migrated schema". A migration tool was listed as follow-up work.
+- **Impact.** The old revision can fail during a rollout, there's no scripted
+  rollback, and every cold start makes extra database round trips.
+- **Fix.** Adopt a migration tool (goose or golang-migrate) with an
+  expand-then-contract convention, and run migrations in CD only.
+
+## The event lock is taken before the role check
+
+- **What.** `eventTransaction` wraps every `/events/{id}` route. It opens a
+  transaction and locks the event row before `RequireEventRole` checks the
+  caller's membership (`internal/events/handler.go:31`).
+- **Why.** The lock must cover validation and the write, so a save and a
+  settlement can't interleave (section 4).
+- **Impact.** Any signed-in user can take a lock on any event id. Every
+  request holds a pool connection for its whole duration, which makes the
+  pool limit above worse. A 404 versus a 403 reveals whether an event id
+  exists.
+- **Fix.** Check membership before locking, and lock only around writes.
+
+## Sessions are never cleaned up
+
+- **What.** Sessions last 30 days, guests included. Expired rows are never
+  deleted; only logout deletes a row. There's no "log out everywhere", and
+  signing in again doesn't revoke older sessions.
+- **Why.** Not stated.
+- **Impact.** The table grows without limit, and a stolen or hijacked session
+  can only be revoked by editing the database.
+- **Fix.** Periodically delete expired rows, add a revoke-all endpoint, and
+  shorten the guest session lifetime.
+
+## Engine changes aren't tied to a version bump
+
+- **What.** The frontend preview runs the same Go engine compiled to WASM,
+  pinned at `@go-split/engine` `1.2.0`. The version is checked only when an
+  `engine-v*` tag is released. A pull request can change
+  `internal/splitengine` or `internal/rulespec` without bumping `Version`
+  (`engine.go:11`). The two match today.
+- **Why.** The backend stays authoritative, so drift can't corrupt saved
+  data.
+- **Impact.** After a backend-only engine change, the frontend can accept
+  rules the API rejects, or reject rules it accepts, until someone bumps the
+  package by hand.
+- **Fix.** Fail CI when engine code changes without a `Version` bump, and
+  have the frontend compare its engine version with the backend's.
+
+## AI rule drafting is a stub
+
+- **What.** `VertexGenerator.Draft` returns `ErrNotImplemented`, so
+  production answers 503. Only `RULE_DRAFT_FIXTURE=true` returns canned
+  plans. There are no timeouts, retries, token limits or per-host quotas yet.
+- **Why.** Choosing the model and its region is a deployment decision
+  (`vertex.go`).
+- **Impact.** The endpoint is in the API docs but unusable. Once wired up it
+  has no cost limit beyond host-only access and a 500-character input cap.
+- **Fix.** Implement the call with a context timeout, one bounded retry, a
+  cap on output tokens, and a daily quota per host.
+
+## Database credentials and roles
+
+- **What.** Terraform writes the database password into both the Cloud SQL
+  user and Secret Manager, so it's also stored in plain text in the Terraform
+  state bucket. The app's database user also runs migrations, so the running
+  app can change the schema.
+- **Why.** One user and a Terraform-managed secret was the simplest setup.
+- **Impact.** Anyone who can read the state bucket has the password, and a
+  compromised app could drop tables.
+- **Fix.** Create the secret outside Terraform, or use IAM database
+  authentication, and give migrations a separate role from the app.
+
+## Frontend: who the user is comes from browser storage
+
+- **What.** There's no `middleware.ts` and no "who am I" request, and nothing
+  handles a 401. The app layout decides whether the user is a guest from
+  `localStorage.guest_session`, and the join page decides whether they're
+  signed in from `sessionStorage.userName`, which is per tab.
+- **Why.** The session cookie is `HttpOnly`, and the backend has no
+  `GET /auth/me`.
+- **Impact.** A signed-in user who opens an invite in a new tab is sent down
+  the guest path. An expired session shows empty pages instead of the
+  sign-in screen.
+- **Fix.** Add `GET /auth/me`, resolve the user from it in Next.js
+  middleware, and redirect to sign-in on any 401.
+
+## Frontend: prototype data in the store
+
+- **What.** The zustand store starts with demo data: fake members (小凱 and
+  others), a demo account and password, a settled event with a bank-account
+  note, and sample items (`src/store/slices/`). Per-event data isn't reset
+  when the user switches events. Unused prototype code remains (`src/data/`,
+  most of `src/lib/helpers.ts`, several components, and the `useSplitEngine`
+  hook).
+- **Why.** Left over from the click-through prototype.
+- **Impact.** When a load fails, the page shows demo people or the previous
+  event's members, rules and tags as if they were real.
+- **Fix.** Empty the defaults, reset per-event state when the event id
+  changes, and delete the dead code.
+
+## Frontend: errors are swallowed
+
+- **What.** Many loads end in `.catch(() => {})` or an empty `catch {}`, for
+  example in the layout, members, rules and create pages. One member-save
+  failure always shows "活動結束已無法編輯", whatever the cause.
+- **Why.** Not stated.
+- **Impact.** Users see blank or out-of-date screens with no message, and
+  the 409/422 codes the API sends are lost.
+- **Fix.** Add one shared error-and-toast path, and remove the empty
+  catches.
+
+## Frontend: API types written by hand
+
+- **What.** Response types in `src/api/*.ts` are written by hand and cast
+  from `res.json()` without checking. Recent commits fixed drift, such as
+  `invite_code` declared required although the API omits it.
+- **Why.** Not stated.
+- **Impact.** When the backend changes a response, the frontend still
+  compiles and only fails at runtime.
+- **Fix.** Generate the types from the backend's Swagger spec (for example
+  with openapi-typescript), and check in CI that they're up to date.
+
+## Frontend: no tests or CI
+
+- **What.** There's no test script, no test files and no GitHub workflow.
+  Vercel only builds, and lint isn't part of the build.
+- **Why.** Not stated.
+- **Impact.** Data-loss regressions have shipped and been fixed after the
+  fact: item edits dropping details, a date shifting by one day, a join note
+  being lost.
+- **Fix.** Add a workflow that runs lint, type-checking and the build, unit
+  tests for `src/lib`, and one end-to-end smoke test of the create and join
+  flows.
+
+## Frontend: invite link hard-codes the production URL
+
+- **What.** The invite link and QR code are built from
+  `https://go-split.vercel.app` (`group/page.tsx:72`), not the current
+  origin.
+- **Why.** Not stated.
+- **Impact.** Invites from preview or local deployments send people to
+  production.
+- **Fix.** Build the link from `window.location.origin`.
