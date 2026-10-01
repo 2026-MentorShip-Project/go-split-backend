@@ -32,6 +32,13 @@ func Open(ctx context.Context) (*pgxpool.Pool, error) {
 		}
 		*target = value
 	}
+	if raw := os.Getenv("DB_MAX_CONNS"); raw != "" {
+		maxConns, err := parseMaxConns(raw)
+		if err != nil {
+			return nil, err
+		}
+		config.MaxConns = maxConns
+	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
@@ -42,6 +49,17 @@ func Open(ctx context.Context) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
 	return pool, nil
+}
+
+// parseMaxConns reads DB_MAX_CONNS. Unset keeps pgx's default of
+// max(4, runtime.NumCPU()), which counts host CPUs rather than Cloud Run's
+// vCPU limit, so production sets it explicitly to bound total connections.
+func parseMaxConns(raw string) (int32, error) {
+	n, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil || n < 1 {
+		return 0, fmt.Errorf("invalid DB_MAX_CONNS %q: want a positive integer", raw)
+	}
+	return int32(n), nil
 }
 
 func env(name, fallback string) string {

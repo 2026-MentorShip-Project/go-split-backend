@@ -57,8 +57,19 @@ variable "vertex_model" {
 
 variable "cloud_run_max_instances" {
   type        = number
-  description = "Cloud Run instance cap. Each instance opens at least 4 database connections (pgx default), so instances x 4 must stay under the Cloud SQL limit (about 25 on db-f1-micro, a few reserved)."
+  description = "Cloud Run instance cap. Each instance opens up to db_max_conns database connections, so instances x db_max_conns must stay under the Cloud SQL limit (about 25 on db-f1-micro, a few reserved, plus one for CD migrations)."
   default     = 5
+}
+
+variable "db_max_conns" {
+  type        = number
+  description = "Database connections per Cloud Run instance (DB_MAX_CONNS). cloud_run_max_instances x db_max_conns must stay under the Cloud SQL limit (about 20 usable on db-f1-micro)."
+  default     = 4
+
+  validation {
+    condition     = var.db_max_conns >= 1 && floor(var.db_max_conns) == var.db_max_conns
+    error_message = "db_max_conns must be a positive integer."
+  }
 }
 
 variable "db_disk_autoresize_limit_gb" {
