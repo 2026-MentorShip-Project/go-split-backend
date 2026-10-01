@@ -264,6 +264,11 @@ resource "google_cloud_run_v2_service" "go_backend" {
       }
 
       env {
+        name  = "DB_MAX_CONNS"
+        value = tostring(var.db_max_conns)
+      }
+
+      env {
         name  = "DB_HOST"
         value = "/cloudsql/${google_sql_database_instance.postgres.connection_name}"
       }

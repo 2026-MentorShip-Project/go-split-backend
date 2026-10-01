@@ -47,7 +47,8 @@ go mod download
 ### Configuration
 
 The server reads `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME`
-for Postgres. Set `GOOGLE_CLIENT_ID` to the OAuth client ID your frontend uses
+for Postgres. `DB_MAX_CONNS` optionally caps the connection pool per process;
+unset, pgx uses max(4, CPU count). Production sets it to 4 through Terraform. Set `GOOGLE_CLIENT_ID` to the OAuth client ID your frontend uses
 for Google Sign-In to enable `POST /auth/google`; when it is unset that
 endpoint answers 503.
 
