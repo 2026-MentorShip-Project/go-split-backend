@@ -138,18 +138,38 @@ func loadDraftInput(ctx context.Context, db database.Store, eventID int64, sub a
 }
 
 func refuseLockedCreates(ctx context.Context, db database.Store, eventID int64, plan ruleassist.Plan, issues []ruleassist.Issue) (ruleassist.Plan, []ruleassist.Issue, error) {
+	created := []string{}
+	for _, rule := range plan.Rules {
+		if rule.Op == ruleassist.Create {
+			created = append(created, rule.ItemTag)
+		}
+	}
+	usage := map[string]int{}
+	if len(created) > 0 {
+		rows, err := db.Query(ctx, "SELECT d.tag, count(*) FROM item_details d JOIN items i ON i.id=d.item_id WHERE i.event_id=$1 AND d.tag=ANY($2) GROUP BY d.tag", eventID, created)
+		if err != nil {
+			return plan, issues, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var tag string
+			var used int
+			if err := rows.Scan(&tag, &used); err != nil {
+				return plan, issues, err
+			}
+			usage[tag] = used
+		}
+		if err := rows.Err(); err != nil {
+			return plan, issues, err
+		}
+	}
 	kept := make([]ruleassist.PlannedRule, 0, len(plan.Rules))
 	for _, rule := range plan.Rules {
 		if rule.Op != ruleassist.Create {
 			kept = append(kept, rule)
 			continue
 		}
-		var used int
-		err := db.QueryRow(ctx, "SELECT count(*) FROM item_details d JOIN items i ON i.id=d.item_id WHERE i.event_id=$1 AND d.tag=$2", eventID, rule.ItemTag).Scan(&used)
-		if err != nil {
-			return plan, issues, err
-		}
-		if used > 0 {
+		if used := usage[rule.ItemTag]; used > 0 {
 			issues = append(issues, ruleassist.Issue{ItemTag: rule.ItemTag, Code: ruleLock,
 				Detail: fmt.Sprintf("%d expense lines already use %q", used, rule.ItemTag)})
 			continue
