@@ -1,4 +1,6 @@
-CREATE EXTENSION IF NOT EXISTS citext;
+-- Pin the extension to public: it is database-wide, and a migration run with a
+-- per-test schema first on search_path would otherwise install it there.
+CREATE EXTENSION IF NOT EXISTS citext WITH SCHEMA public;
 -- Auth-adjacent tables.
 --
 -- Hosts have real accounts; guests (co-organizers and participants) are
