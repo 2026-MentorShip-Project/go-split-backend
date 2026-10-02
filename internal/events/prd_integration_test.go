@@ -141,7 +141,6 @@ func TestPRDLifecycle(t *testing.T) {
 	a.call(t, host, "PATCH", base, gin.H{"name": "Updated", "template": "烤肉/露營模板"}, 409)
 	a.call(t, host, "PATCH", base, gin.H{"name": "Updated"}, 204)
 	for _, detail := range []gin.H{
-		{"name": "bad", "amount": 300, "manual_member_ids": []int64{}},
 		{"name": "bad", "amount": 300, "custom_amounts": gin.H{fmt.Sprint(hid): 350}},
 		{"name": "bad", "amount": 300, "custom_amounts": gin.H{fmt.Sprint(hid): 100, fmt.Sprint(mid): 100, fmt.Sprint(co.ID): 50}},
 		{"name": " ", "amount": 300},
@@ -243,7 +242,6 @@ func TestPRDRuleLocks(t *testing.T) {
 	base := fmt.Sprintf("/events/%d", e.ID)
 	ms := decodePRD[membersResponse](t, a.call(t, host, "GET", base+"/members", nil, 200))
 	hid := ms.Members[0].ID
-	a.call(t, host, "POST", base+"/items", gin.H{"payer_member_id": hid, "details": []any{gin.H{"name": "No riders", "amount": 1200, "tag": "交通費"}}}, 422)
 	a.call(t, host, "POST", base+"/items", gin.H{"payer_member_id": hid, "details": []any{gin.H{"name": "Rule bypass", "amount": 100, "tag": "肉品", "custom_amounts": gin.H{fmt.Sprint(hid): 100}}}}, 422)
 	a.call(t, host, "PATCH", fmt.Sprintf("%s/members/%d", base, hid), gin.H{"tags": []string{"大人"}}, 200)
 	a.call(t, host, "DELETE", base+"/tags/conds/大人", nil, 409)
@@ -354,4 +352,43 @@ func TestPRDStableDetailIDs(t *testing.T) {
 	a.call(t, host, "PATCH", path, gin.H{"details": swapped}, 400)
 	a.call(t, host, "PATCH", path, gin.H{"details": []gin.H{{"id": int64(999999), "name": "foreign", "amount": 3}}}, 400)
 	a.call(t, host, "PATCH", path, gin.H{"details": []gin.H{}}, 200)
+}
+
+func TestPRDNoParticipantLineSavesButBlocksSettlement(t *testing.T) {
+	a := newPRDAPI(t)
+	host := a.host(t)
+	e := decodePRD[createEventResponse](t, a.call(t, host, "POST", "/events", gin.H{"name": "Opt-in", "template": "自訂"}, 201))
+	base := fmt.Sprintf("/events/%d", e.ID)
+	a.call(t, host, "POST", base+"/tags/items", gin.H{"label": "交通費"}, 201)
+	a.call(t, host, "POST", base+"/tags/conds", gin.H{"label": "需搭主辦的車"}, 201)
+	a.call(t, host, "POST", base+"/rules", gin.H{
+		"item_tag": "交通費",
+		"groups":   []gin.H{{"conds": []string{"需搭主辦的車"}, "mode": "weight", "weight": 1}},
+		"rest":     gin.H{"mode": "exclude"},
+	}, 201)
+	hid := decodePRD[membersResponse](t, a.call(t, host, "GET", base+"/members", nil, 200)).Members[0].ID
+
+	for _, detail := range []gin.H{
+		{"name": "Bus", "amount": 3000, "tag": "交通費"},
+		{"name": "Nobody", "amount": 300, "manual_member_ids": []int64{}},
+	} {
+		card := decodePRD[itemDTO](t, a.call(t, host, "POST", base+"/items", gin.H{"payer_member_id": hid, "details": []any{detail}}, 201))
+		got := decodePRD[itemDTO](t, a.call(t, host, "GET", fmt.Sprintf("%s/items/%d", base, card.ID), nil, 200))
+		if got.Details[0].Allocation == nil || got.Details[0].Allocation.Validity != "no-participant" {
+			t.Fatalf("%v: allocation %+v", detail["name"], got.Details[0].Allocation)
+		}
+		if detail["name"] == "Nobody" {
+			a.call(t, host, "DELETE", fmt.Sprintf("%s/items/%d", base, card.ID), nil, 204)
+		}
+	}
+
+	blocked := decodePRD[validationResponse](t, a.call(t, host, "GET", base+"/transfers", nil, 422))
+	if len(blocked.Details) != 1 || blocked.Details[0].Code != "no-participant" {
+		t.Fatalf("transfers issues %+v", blocked.Details)
+	}
+	a.call(t, host, "POST", base+"/settle", nil, 422)
+
+	a.call(t, host, "PATCH", fmt.Sprintf("%s/members/%d", base, hid), gin.H{"tags": []string{"需搭主辦的車"}}, 200)
+	a.call(t, host, "GET", base+"/transfers", nil, 200)
+	a.call(t, host, "POST", base+"/settle", nil, 204)
 }
