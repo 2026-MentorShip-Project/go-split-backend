@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"time"
 
 	"go-split-backend/internal/database"
@@ -119,14 +120,21 @@ func loadMembers(ctx context.Context, db database.Store, eventID int64, sub auth
 		return nil, err
 	}
 	if snap != nil {
+		rows, err := db.Query(ctx, `
+			SELECT id FROM event_members
+			 WHERE event_id = $1
+			   AND (($2 <> 0 AND account_id = $2) OR ($3 <> 0 AND guest_id = $3))`,
+			eventID, sub.AccountID, sub.GuestID)
+		if err != nil {
+			return nil, err
+		}
+		mine, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+		if err != nil {
+			return nil, err
+		}
 		out := snap.Event.Members
 		for i := range out {
-			var you bool
-			err := db.QueryRow(ctx, "SELECT COALESCE(account_id=$2 OR guest_id=$3,false) FROM event_members WHERE id=$1", out[i].ID, sub.AccountID, sub.GuestID).Scan(&you)
-			if err != nil {
-				return nil, err
-			}
-			out[i].You = you
+			out[i].You = slices.Contains(mine, out[i].ID)
 		}
 		return out, nil
 	}

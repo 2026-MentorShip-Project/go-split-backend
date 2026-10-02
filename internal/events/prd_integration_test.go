@@ -183,6 +183,14 @@ func TestPRDLifecycle(t *testing.T) {
 	if len(snap.Event.Items) != 2 || snap.Engine.Shares.GrandTotal != 300 {
 		t.Fatal("incomplete snapshot")
 	}
+	for cookie, want := range map[string]int64{host: hid, guest: mid} {
+		settled := decodePRD[membersResponse](t, a.call(t, cookie, "GET", base+"/members", nil, 200))
+		for _, m := range settled.Members {
+			if m.You != (m.ID == want) {
+				t.Fatalf("settled members you flag: member %d you=%v, want member %d", m.ID, m.You, want)
+			}
+		}
+	}
 	for _, route := range []struct {
 		method, path string
 		body         any
