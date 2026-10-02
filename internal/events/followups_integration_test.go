@@ -62,3 +62,24 @@ func TestEventFollowupContracts(t *testing.T) {
 		t.Fatalf("custom seed %d: %v", seeded, err)
 	}
 }
+
+func TestJoinConditionValidation(t *testing.T) {
+	a := newPRDAPI(t)
+	host := a.host(t)
+	e := decodePRD[createEventResponse](t, a.call(t, host, "POST", "/events", gin.H{"name": "Join conds", "template": "自訂"}, 201))
+	base := fmt.Sprintf("/events/%d", e.ID)
+	for _, label := range []string{"vegetarian", "driver"} {
+		a.call(t, host, "POST", base+"/tags/conds", gin.H{"label": label}, 201)
+	}
+	join := func(email string, conds []string, status int) {
+		t.Helper()
+		a.call(t, "", "POST", "/auth/join", gin.H{"code": e.InviteCode, "name": email, "email": email + "@example.com", "phone": "0912345678", "cond_tags": conds}, status)
+	}
+	join("unknown", []string{"vegetarian", "smoker"}, 400)
+	join("repeated", []string{"driver", "driver"}, 400)
+	join("known", []string{"vegetarian", "driver"}, 200)
+	members := decodePRD[membersResponse](t, a.call(t, host, "GET", base+"/members", nil, 200))
+	if len(members.Members) != 2 || len(members.Members[1].Tags) != 2 {
+		t.Fatalf("join conditions not applied: %+v", members.Members)
+	}
+}
