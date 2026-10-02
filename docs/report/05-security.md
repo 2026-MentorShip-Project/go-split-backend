@@ -191,8 +191,8 @@ accepts encrypted connections (`ssl_mode = ENCRYPTED_ONLY`).
 **Money can't be set by the client.** The browser's WASM engine only previews
 a split. On every save, and again at settlement, the server recalculates
 shares with its own engine and ignores any client-computed totals. Splits
-that don't add up get 422, and nothing is saved. A line nobody shares yet is
-saved but blocks settlement. After settlement, results come from a
+that don't add up get 422, and nothing is saved. A line nobody shares is
+charged to whoever paid it. After settlement, results come from a
 frozen snapshot that records the engine version, so no later change can alter
 them.
 
