@@ -40,9 +40,9 @@ This wrapper runs on the calling thread, without creating a Worker. Each context
 
 Use validated R1 inputs, integer NT dollars, safe JavaScript integer IDs/amounts, unique member IDs, and valid weights. The backend still authoritatively validates saves. Map API member `tags` to `cond_tags`, and detail `tag` to `item_tag`. Preserve member order / `split_order` for deterministic remainders.
 
-`custom_amounts` holds fixed overrides, never calculated results. Omitted/null `manual_member_ids` uses all members; an empty list produces `no-participant`. Rules contain ordered AND groups and optional rest; modes are `weight` and `exclude`.
+`custom_amounts` holds fixed overrides, never calculated results. Omitted/null `manual_member_ids` uses all members. Pass the item's payer as `payer_id`: a detail nobody shares, such as an empty `manual_member_ids` list or a rule that excludes everyone, goes entirely to the payer with trace kind `payer-absorbs`, so it nets to zero. Rules contain ordered AND groups and optional rest; modes are `weight` and `exclude`.
 
-Results include shares, exclusions, traces and validity: `ok`, `no-participant`, `custom-overflow`, or `custom-mismatch`. TypeScript declarations are included.
+Results include shares, exclusions, traces and validity: `ok`, `no-participant` (nobody shares the detail and `payer_id` is not a member), `custom-overflow`, or `custom-mismatch`. TypeScript declarations are included.
 
 ## Checking a rule before saving
 

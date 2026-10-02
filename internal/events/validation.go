@@ -50,9 +50,7 @@ func validateDetails(ctx context.Context, db database.Store, id int64, details [
 			continue
 		}
 		r := splitengine.SplitDetail(splitengine.Detail{Amount: d.Amount, Tag: tag, ManualMemberIDs: d.ManualMemberIDs, CustomShares: numericStringMap(d.CustomShares)}, ms, rules, nil, 1)
-		// A line nobody shares yet is saved: members may still join or set the
-		// conditions its rule needs. Transfers and settlement reject it until then.
-		if r.Validity != splitengine.OK && r.Validity != splitengine.NoParticipant {
+		if r.Validity != splitengine.OK {
 			out = append(out, detailIssue{Index: i, Code: string(r.Validity), Diff: r.Diff})
 		}
 	}
