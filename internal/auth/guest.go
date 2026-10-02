@@ -274,13 +274,16 @@ func validateJoinConditions(ctx context.Context, db database.Store, id int64, ta
 			return errors.New("duplicate condition")
 		}
 		seen[tag] = true
-		var exists bool
-		if err := db.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM event_cond_tags WHERE event_id=$1 AND label=$2)", id, tag).Scan(&exists); err != nil {
-			return err
-		}
-		if !exists {
-			return errors.New("unknown condition")
-		}
+	}
+	if len(tags) == 0 {
+		return nil
+	}
+	var known int
+	if err := db.QueryRow(ctx, "SELECT count(DISTINCT label) FROM event_cond_tags WHERE event_id=$1 AND label=ANY($2)", id, tags).Scan(&known); err != nil {
+		return err
+	}
+	if known != len(tags) {
+		return errors.New("unknown condition")
 	}
 	return nil
 }
