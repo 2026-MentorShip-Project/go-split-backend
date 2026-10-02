@@ -353,7 +353,7 @@ func TestPRDStableDetailIDs(t *testing.T) {
 	a.call(t, host, "PATCH", path, gin.H{"details": []gin.H{}}, 200)
 }
 
-func TestPRDHostAbsorbsUnsharedLines(t *testing.T) {
+func TestPRDPayerAbsorbsUnsharedLines(t *testing.T) {
 	a := newPRDAPI(t)
 	host := a.host(t)
 	e := decodePRD[createEventResponse](t, a.call(t, host, "POST", "/events", gin.H{"name": "Opt-in", "template": "自訂"}, 201))
@@ -376,16 +376,19 @@ func TestPRDHostAbsorbsUnsharedLines(t *testing.T) {
 		{hid, gin.H{"name": "Nobody", "amount": 300, "manual_member_ids": []int64{}}},
 	} {
 		card := decodePRD[itemDTO](t, a.call(t, host, "POST", base+"/items", gin.H{"payer_member_id": c.payer, "details": []any{c.detail}}, 201))
-		got := decodePRD[itemDTO](t, a.call(t, host, "GET", fmt.Sprintf("%s/items/%d", base, card.ID), nil, 200))
+		path := fmt.Sprintf("%s/items/%d", base, card.ID)
+		// A patch that keeps the payer is checked against the card's payer.
+		a.call(t, host, "PATCH", path, gin.H{"details": []any{c.detail}}, 200)
+		got := decodePRD[itemDTO](t, a.call(t, host, "GET", path, nil, 200))
 		alloc := got.Details[0].Allocation
-		if alloc == nil || alloc.Validity != "ok" || len(alloc.Shares) != 1 || alloc.Shares[0].MemberID != hid || alloc.Shares[0].Trace.Kind != "host-absorbs" {
+		if alloc == nil || alloc.Validity != "ok" || len(alloc.Shares) != 1 || alloc.Shares[0].MemberID != c.payer || alloc.Shares[0].Trace.Kind != "payer-absorbs" {
 			t.Fatalf("%v: allocation %+v", c.detail["name"], alloc)
 		}
 	}
 
 	ts := decodePRD[transfersResponse](t, a.call(t, host, "GET", base+"/transfers", nil, 200))
-	if len(ts.Transfers) != 1 || ts.Transfers[0].FromID != hid || ts.Transfers[0].ToID != co.ID || ts.Transfers[0].Amount != 3000 {
-		t.Fatalf("host should repay the co-host: %+v", ts.Transfers)
+	if len(ts.Transfers) != 0 {
+		t.Fatalf("lines the payer absorbs must not create debts: %+v", ts.Transfers)
 	}
 	a.call(t, host, "POST", base+"/settle", nil, 204)
 }
