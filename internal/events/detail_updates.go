@@ -20,15 +20,15 @@ func replaceDetails(ctx context.Context, db database.Store, itemID int64, detail
 		if d.ID == 0 {
 			continue
 		}
-		var exists bool
-		if err := db.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM item_details WHERE item_id=$1 AND id=$2)", itemID, d.ID).Scan(&exists); err != nil {
-			return err
-		}
-		if !exists {
-			return errInvalidDetailID
-		}
 		seen[d.ID] = true
 		retained = append(retained, d.ID)
+	}
+	var owned int
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM item_details WHERE item_id=$1 AND id=ANY($2)", itemID, retained).Scan(&owned); err != nil {
+		return err
+	}
+	if owned != len(retained) {
+		return errInvalidDetailID
 	}
 	if _, err := db.Exec(ctx, "DELETE FROM item_details WHERE item_id=$1 AND NOT (id=ANY($2))", itemID, retained); err != nil {
 		return err
