@@ -124,7 +124,7 @@ func (h *Handler) PostItem(c *gin.Context) {
 		return
 	}
 
-	if issues, err := validateDetails(c.Request.Context(), h.DB, eventID, req.Details); err != nil {
+	if issues, err := validateDetails(c.Request.Context(), h.DB, eventID, req.PayerMemberID, req.Details); err != nil {
 		respondErr(c, 500, "validate details")
 		return
 	} else if len(issues) > 0 {
@@ -434,7 +434,12 @@ func (h *Handler) PatchItem(c *gin.Context) {
 	}
 
 	if req.Details != nil {
-		if issues, err := validateDetails(c.Request.Context(), h.DB, eventID, req.Details); err != nil {
+		payerID, err := itemPayer(c.Request.Context(), h.DB, itemID, req.PayerMemberID)
+		if err != nil {
+			respondErr(c, 500, "load payer")
+			return
+		}
+		if issues, err := validateDetails(c.Request.Context(), h.DB, eventID, payerID, req.Details); err != nil {
 			respondErr(c, 500, "validate details")
 			return
 		} else if len(issues) > 0 {
@@ -548,4 +553,15 @@ func updateItemTx(ctx context.Context, db database.Store, eventID, itemID int64,
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+// itemPayer is the payer a patched card will have: the requested one, or the
+// card's current payer when the patch leaves it unchanged.
+func itemPayer(ctx context.Context, db database.Store, itemID int64, requested *int64) (int64, error) {
+	if requested != nil {
+		return *requested, nil
+	}
+	var payer int64
+	err := db.QueryRow(ctx, "SELECT payer_member_id FROM items WHERE id = $1", itemID).Scan(&payer)
+	return payer, err
 }

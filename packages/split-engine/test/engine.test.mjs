@@ -40,6 +40,13 @@ test('actual Go engine preserves allocation, manual overrides and validity', () 
   assert.throws(() => preview({ amount: 'invalid' }), /invalid JSON input/);
 });
 
+test('actual Go engine gives a detail nobody shares to its payer', () => {
+  const absorbed = preview({ amount: 300, item_tag: 'ride', payer_id: 2 }, [{ item_tag: 'ride', groups: [], rest: { mode: 'exclude' } }]);
+  assert.equal(absorbed.validity, 'ok');
+  assert.deepEqual(absorbed.shares.map(s => [s.member_id, s.amount, s.trace.kind]), [[2, 300, 'payer-absorbs']]);
+  assert.deepEqual(absorbed.excluded.map(s => s.member_id), [3, 1]);
+});
+
 test('rule validation mirrors the backend and reports stable codes', () => {
   const accepted = validateRule({ groups: [{ conds: ['vegan'], mode: 'exclude' }], cond_tags: ['vegan'] });
   assert.equal(accepted.ok, true);

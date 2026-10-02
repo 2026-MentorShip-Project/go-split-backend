@@ -8,6 +8,8 @@ export interface Detail {
   item_tag?: string;
   manual_member_ids?: number[] | null;
   custom_amounts?: Record<string, number>;
+  /** The item's payer, who absorbs the detail when no member shares it. */
+  payer_id?: number;
 }
 export interface SplitInput {
   detail: Detail;
@@ -16,6 +18,7 @@ export interface SplitInput {
   split_order?: number[];
 }
 export interface Trace {
+  /** e.g. `weighted`, `excluded`, `rest`, `custom`, `no-rule`, or `payer-absorbs` when nobody else shares the detail. */
   kind: string;
   rule_item_tag?: string;
   cond_set_index?: number;
@@ -32,6 +35,7 @@ export interface SplitResult {
   excluded: Share[];
   total_weight: number;
   unit_price: number;
+  /** `no-participant` only when nobody shares the detail and `payer_id` is not a member. */
   validity: 'ok' | 'no-participant' | 'custom-mismatch' | 'custom-overflow';
   diff?: number;
 }

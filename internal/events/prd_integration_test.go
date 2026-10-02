@@ -272,7 +272,6 @@ func TestPRDRuleLocks(t *testing.T) {
 		t.Fatal("rename disconnected expenses")
 	}
 	a.call(t, host, "PATCH", ruleURL, gin.H{"rest": gin.H{"mode": "weight", "weight": 0}}, 200)
-	a.call(t, host, "POST", base+"/settle", nil, 422)
 	a.call(t, host, "PATCH", ruleURL, gin.H{"rest": gin.H{"mode": "weight"}}, 200)
 	a.call(t, host, "POST", base+"/settle", nil, 204)
 }
@@ -354,7 +353,7 @@ func TestPRDStableDetailIDs(t *testing.T) {
 	a.call(t, host, "PATCH", path, gin.H{"details": []gin.H{}}, 200)
 }
 
-func TestPRDNoParticipantLineSavesButBlocksSettlement(t *testing.T) {
+func TestPRDPayerAbsorbsUnsharedLines(t *testing.T) {
 	a := newPRDAPI(t)
 	host := a.host(t)
 	e := decodePRD[createEventResponse](t, a.call(t, host, "POST", "/events", gin.H{"name": "Opt-in", "template": "自訂"}, 201))
@@ -367,28 +366,29 @@ func TestPRDNoParticipantLineSavesButBlocksSettlement(t *testing.T) {
 		"rest":     gin.H{"mode": "exclude"},
 	}, 201)
 	hid := decodePRD[membersResponse](t, a.call(t, host, "GET", base+"/members", nil, 200)).Members[0].ID
+	co := decodePRD[memberDTO](t, a.call(t, host, "POST", base+"/members", gin.H{"display": "co", "role": "co"}, 201))
 
-	for _, detail := range []gin.H{
-		{"name": "Bus", "amount": 3000, "tag": "交通費"},
-		{"name": "Nobody", "amount": 300, "manual_member_ids": []int64{}},
+	for _, c := range []struct {
+		payer  int64
+		detail gin.H
+	}{
+		{co.ID, gin.H{"name": "Bus", "amount": 3000, "tag": "交通費"}},
+		{hid, gin.H{"name": "Nobody", "amount": 300, "manual_member_ids": []int64{}}},
 	} {
-		card := decodePRD[itemDTO](t, a.call(t, host, "POST", base+"/items", gin.H{"payer_member_id": hid, "details": []any{detail}}, 201))
-		got := decodePRD[itemDTO](t, a.call(t, host, "GET", fmt.Sprintf("%s/items/%d", base, card.ID), nil, 200))
-		if got.Details[0].Allocation == nil || got.Details[0].Allocation.Validity != "no-participant" {
-			t.Fatalf("%v: allocation %+v", detail["name"], got.Details[0].Allocation)
-		}
-		if detail["name"] == "Nobody" {
-			a.call(t, host, "DELETE", fmt.Sprintf("%s/items/%d", base, card.ID), nil, 204)
+		card := decodePRD[itemDTO](t, a.call(t, host, "POST", base+"/items", gin.H{"payer_member_id": c.payer, "details": []any{c.detail}}, 201))
+		path := fmt.Sprintf("%s/items/%d", base, card.ID)
+		// A patch that keeps the payer is checked against the card's payer.
+		a.call(t, host, "PATCH", path, gin.H{"details": []any{c.detail}}, 200)
+		got := decodePRD[itemDTO](t, a.call(t, host, "GET", path, nil, 200))
+		alloc := got.Details[0].Allocation
+		if alloc == nil || alloc.Validity != "ok" || len(alloc.Shares) != 1 || alloc.Shares[0].MemberID != c.payer || alloc.Shares[0].Trace.Kind != "payer-absorbs" {
+			t.Fatalf("%v: allocation %+v", c.detail["name"], alloc)
 		}
 	}
 
-	blocked := decodePRD[validationResponse](t, a.call(t, host, "GET", base+"/transfers", nil, 422))
-	if len(blocked.Details) != 1 || blocked.Details[0].Code != "no-participant" {
-		t.Fatalf("transfers issues %+v", blocked.Details)
+	ts := decodePRD[transfersResponse](t, a.call(t, host, "GET", base+"/transfers", nil, 200))
+	if len(ts.Transfers) != 0 {
+		t.Fatalf("lines the payer absorbs must not create debts: %+v", ts.Transfers)
 	}
-	a.call(t, host, "POST", base+"/settle", nil, 422)
-
-	a.call(t, host, "PATCH", fmt.Sprintf("%s/members/%d", base, hid), gin.H{"tags": []string{"需搭主辦的車"}}, 200)
-	a.call(t, host, "GET", base+"/transfers", nil, 200)
 	a.call(t, host, "POST", base+"/settle", nil, 204)
 }

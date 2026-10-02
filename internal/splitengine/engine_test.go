@@ -34,12 +34,13 @@ func TestSplitAcceptance(t *testing.T) {
 		{"F3 order", Detail{Amount: 101}, nil, []int64{34, 34, 33}, OK, 0},
 		{"custom fixed", Detail{Amount: 101, CustomShares: map[int64]int64{3: 20}}, nil, []int64{20, 41, 40}, OK, 0},
 		{"manual subset", Detail{Amount: 101, ManualMemberIDs: []int64{1, 3}}, nil, []int64{51, 50}, OK, 0},
-		{"empty manual", Detail{Amount: 101, ManualMemberIDs: []int64{}}, nil, []int64{}, NoParticipant, 0},
+		{"empty manual goes to payer", Detail{Amount: 101, ManualMemberIDs: []int64{}, PayerID: 1}, nil, []int64{101}, OK, 0},
+		{"empty manual without payer", Detail{Amount: 101, ManualMemberIDs: []int64{}}, nil, []int64{}, NoParticipant, 0},
 		{"overflow", Detail{Amount: 300, CustomShares: map[int64]int64{3: 350}}, nil, []int64{350, 0, 0}, CustomOverflow, 50},
 		{"mismatch", Detail{Amount: 300, CustomShares: map[int64]int64{3: 100, 2: 100, 1: 50}}, nil, []int64{100, 100, 50}, CustomMismatch, 50},
 		{"all fixed", Detail{Amount: 300, CustomShares: map[int64]int64{3: 100, 2: 100, 1: 100}}, nil, []int64{100, 100, 100}, OK, 0},
 		{"rules ignore manual", Detail{Amount: 300, Tag: "t", ManualMemberIDs: []int64{}, CustomShares: map[int64]int64{3: 350}}, []Rule{{Tag: "t"}}, []int64{100, 100, 100}, OK, 0},
-		{"rest excludes", Detail{Amount: 300, Tag: "t"}, []Rule{{Tag: "t", Rest: &Group{Mode: "exclude"}}}, []int64{}, NoParticipant, 0},
+		{"rest excludes goes to payer", Detail{Amount: 300, Tag: "t", PayerID: 2}, []Rule{{Tag: "t", Rest: &Group{Mode: "exclude"}}}, []int64{300}, OK, 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -66,6 +67,31 @@ func TestOutdoor(t *testing.T) {
 		if !reflect.DeepEqual(got.PerDetail[0].Shares, c.want) {
 			t.Fatalf("%s: %v", c.tag, got.PerDetail[0].Shares)
 		}
+	}
+}
+func TestPayerAbsorbsUnsharedDetail(t *testing.T) {
+	ms := []Member{{ID: 1}, {ID: 2}, {ID: 3}}
+	optIn := []Rule{{Tag: "transport", Groups: []Group{{Conds: []string{"ride"}, Mode: "weight", Weight: 1}}, Rest: &Group{Mode: "exclude"}}}
+
+	got := SplitDetail(Detail{Amount: 3000, Tag: "transport", PayerID: 2}, ms, optIn, nil, 1)
+	if got.Validity != OK || len(got.Shares) != 1 || got.Shares[0].MemberID != 2 || got.Shares[0].Amount != 3000 || got.Shares[0].Trace.Kind != "payer-absorbs" {
+		t.Fatalf("payer share %+v", got)
+	}
+	for _, ex := range got.Excluded {
+		if ex.MemberID == 2 {
+			t.Fatal("payer listed as both sharing and excluded")
+		}
+	}
+
+	shares := Compute(ms, []Item{{ID: 1, PayerID: 2, Details: []Detail{{Amount: 3000, Tag: "transport"}}}}, optIn)
+	transfers, err := HubTransfers(shares, 1)
+	if err != nil || len(transfers) != 0 {
+		t.Fatalf("a co-host's unshared payment must not create a debt: %v %v", transfers, err)
+	}
+
+	noPayer := SplitDetail(Detail{Amount: 3000, Tag: "transport"}, ms, optIn, nil, 1)
+	if noPayer.Validity != NoParticipant || len(noPayer.Shares) != 0 {
+		t.Fatalf("without a payer: %+v", noPayer)
 	}
 }
 func TestHub(t *testing.T) {

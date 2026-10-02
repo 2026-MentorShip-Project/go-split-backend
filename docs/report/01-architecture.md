@@ -199,9 +199,9 @@ timeout), creates or finds the account, and sets a session cookie. Guests use
 **Record an expense.** While the host edits, the browser runs the WASM engine
 for a preview. On save, the API validates every line, runs the same engine, and
 writes the item in one transaction. If any line is invalid, nothing is saved,
-and the response is a 422 with a code for each bad line. The exception is a
-line nobody shares yet (`no-participant`): it is saved, and it blocks transfers
-and settlement until members or conditions change.
+and the response is a 422 with a code for each bad line. A line nobody shares,
+because its rule excludes every member, is not an error: whoever paid it
+absorbs the whole amount.
 
 **Settle.** The host calls `POST /events/{id}/settle`. The API checks every
 line again, then freezes the inputs, results, member order, host, and engine

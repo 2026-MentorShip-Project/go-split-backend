@@ -8,7 +8,7 @@ import (
 	"math/big"
 )
 
-const Version = "1.2.0"
+const Version = "1.3.0"
 
 type Validity string
 
@@ -51,6 +51,8 @@ type Detail struct {
 	Tag             string          `json:"item_tag"`
 	ManualMemberIDs []int64         `json:"manual_member_ids"`
 	CustomShares    map[int64]int64 `json:"custom_amounts"`
+	// PayerID absorbs the detail when no member shares it.
+	PayerID int64 `json:"payer_id,omitempty"`
 }
 type Item struct {
 	ID      int64    `json:"id"`
@@ -193,8 +195,7 @@ func SplitDetail(d Detail, members []Member, rules []Rule, order []int64, minUni
 		out.Shares = append(out.Shares, sh)
 	}
 	if len(out.Shares) == 0 {
-		out.Validity = NoParticipant
-		return out
+		return payerAbsorbs(out, d, members)
 	}
 	out.TotalWeight = float64(totalWeight) / 10
 	switch {
@@ -258,6 +259,27 @@ func settleAllocations(out *SplitResult, weights map[int64]int64, fixed map[int6
 		left -= minUnit
 	}
 }
+
+// payerAbsorbs charges the whole detail to its payer when no member shares
+// it, so the line nets to zero. NoParticipant remains only without a payer.
+func payerAbsorbs(out SplitResult, d Detail, members []Member) SplitResult {
+	for _, m := range members {
+		if m.ID != d.PayerID {
+			continue
+		}
+		excluded := []Share{}
+		for _, sh := range out.Excluded {
+			if sh.MemberID != m.ID {
+				excluded = append(excluded, sh)
+			}
+		}
+		out.Excluded = excluded
+		out.Shares = []Share{{MemberID: m.ID, Amount: d.Amount, Trace: Trace{Kind: "payer-absorbs", Value: d.Amount}}}
+		return out
+	}
+	out.Validity = NoParticipant
+	return out
+}
 func Compute(members []Member, items []Item, rules []Rule) Shares {
 	out := Shares{PerDetail: []DetailShares{}, PerMember: map[int64]MemberShares{}}
 	for _, m := range members {
@@ -265,6 +287,7 @@ func Compute(members []Member, items []Item, rules []Rule) Shares {
 	}
 	for _, it := range items {
 		for _, d := range it.Details {
+			d.PayerID = it.PayerID
 			r := SplitDetail(d, members, rules, nil, 1)
 			ds := DetailShares{ItemID: it.ID, DetailID: d.ID, Amount: d.Amount, Shares: map[int64]int64{}, Result: r}
 			for _, sh := range r.Shares {

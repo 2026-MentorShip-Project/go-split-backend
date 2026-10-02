@@ -29,7 +29,7 @@ func splitIssues(r engineResult) []detailIssue {
 	}
 	return out
 }
-func validateDetails(ctx context.Context, db database.Store, id int64, details []createDetailRequest) ([]detailIssue, error) {
+func validateDetails(ctx context.Context, db database.Store, id, payerID int64, details []createDetailRequest) ([]detailIssue, error) {
 	ms, err := loadEngineMembers(ctx, db, id)
 	if err != nil {
 		return nil, err
@@ -49,10 +49,8 @@ func validateDetails(ctx context.Context, db database.Store, id int64, details [
 			out = append(out, detailIssue{Index: i, Code: code})
 			continue
 		}
-		r := splitengine.SplitDetail(splitengine.Detail{Amount: d.Amount, Tag: tag, ManualMemberIDs: d.ManualMemberIDs, CustomShares: numericStringMap(d.CustomShares)}, ms, rules, nil, 1)
-		// A line nobody shares yet is saved: members may still join or set the
-		// conditions its rule needs. Transfers and settlement reject it until then.
-		if r.Validity != splitengine.OK && r.Validity != splitengine.NoParticipant {
+		r := splitengine.SplitDetail(splitengine.Detail{Amount: d.Amount, Tag: tag, ManualMemberIDs: d.ManualMemberIDs, CustomShares: numericStringMap(d.CustomShares), PayerID: payerID}, ms, rules, nil, 1)
+		if r.Validity != splitengine.OK {
 			out = append(out, detailIssue{Index: i, Code: string(r.Validity), Diff: r.Diff})
 		}
 	}
