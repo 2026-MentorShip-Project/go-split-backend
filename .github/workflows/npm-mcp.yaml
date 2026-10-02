@@ -1,0 +1,81 @@
+name: npm mcp release
+
+permissions:
+  contents: read
+
+on:
+  push:
+    tags:
+      - 'mcp-v*'
+
+jobs:
+  mcp-package:
+    name: Build and verify npm mcp server
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Validate mcp release tag
+        working-directory: packages/mcp
+        run: node scripts/verify-release.mjs
+      - name: Test and pack
+        working-directory: packages/mcp
+        run: |
+          npm ci
+          npm test
+          mkdir -p packed
+          npm pack --pack-destination packed
+          node scripts/test-package.mjs ./packed/*.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-mcp-${{ github.sha }}
+          path: packages/mcp/packed/*.tgz
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-mcp:
+    name: Publish npm mcp release
+    needs: mcp-package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: npm-mcp-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-mcp-${{ github.sha }}
+          path: packed
+      - name: Check if this immutable version is already published
+        id: release
+        run: node packages/mcp/scripts/publish-state.mjs
+      - name: Publish tested tarball to npm
+        if: steps.release.outputs.exists != 'true'
+        env:
+          # Optional for first publication; prefer npm trusted publishing (OIDC).
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/mcp-npmrc
+        run: |
+          set -euo pipefail
+          trap 'rm -f "$NPM_CONFIG_USERCONFIG"' EXIT
+          if [ -n "$NODE_AUTH_TOKEN" ]; then
+            printf '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}\n' > "$NPM_CONFIG_USERCONFIG"
+          else
+            : > "$NPM_CONFIG_USERCONFIG"
+            unset NODE_AUTH_TOKEN
+          fi
+          npm publish ./packed/*.tgz --access public --ignore-scripts --registry=https://registry.npmjs.org/

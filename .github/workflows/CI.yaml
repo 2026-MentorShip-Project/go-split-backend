@@ -50,6 +50,24 @@ jobs:
           npm pack --pack-destination packed
           node scripts/test-package.mjs packed/*.tgz
 
+  npm-mcp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Test and install packed mcp server
+        working-directory: packages/mcp
+        run: |
+          npm ci
+          npm test
+          mkdir -p packed
+          npm pack --pack-destination packed
+          node scripts/test-package.mjs packed/*.tgz
+
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
