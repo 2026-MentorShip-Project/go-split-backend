@@ -347,6 +347,32 @@ const docTemplate = `{
                 }
             }
         },
+        "/auth/tokens": {
+            "post": {
+                "description": "Creates a new session for the caller and returns its token in\nthe body instead of a cookie, for clients that authenticate\nwith \"Authorization: Bearer \u003ctoken\u003e\". Revoke it with\nPOST /auth/logout using the same header.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Issue an API token",
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/auth.tokenResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/auth.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/events": {
             "get": {
                 "description": "Returns every event the caller belongs to (as host, co, or\nmember), each with role, member count, settled and archived\nflags, and template. Sorted newest event first.",
@@ -2432,6 +2458,17 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 72,
                     "minLength": 8
+                }
+            }
+        },
+        "auth.tokenResponse": {
+            "type": "object",
+            "properties": {
+                "expires_at": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
                 }
             }
         },
