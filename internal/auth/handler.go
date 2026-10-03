@@ -28,6 +28,7 @@ func (h *Handler) Register(r gin.IRouter) {
 	g.POST("/google", h.PostGoogle)
 	h.registerPasswordRoutes(g)
 	g.DELETE("/", RequireSession(h.DB), h.DeleteAccount)
+	g.POST("/tokens", RequireSession(h.DB), h.PostToken)
 	h.registerGuestRoutes(g)
 }
 
